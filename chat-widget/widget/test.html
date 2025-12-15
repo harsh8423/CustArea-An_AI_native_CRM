@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chatbot Widget Test</title>
+</head>
+
+<body>
+    <h1>Chatbot Widget Test Page</h1>
+    <p>The widget should appear in the bottom right corner.</p>
+
+    <!-- Widget Configuration -->
+    <script>
+        window.MyChatbotConfig = {
+            siteId: "00000000-0000-0000-0000-000000000001" // You'll need to replace this with a real site ID from the DB
+        };
+    </script>
+
+    <!-- Load Widget -->
+    <script src="./dist/widget.iife.js"></script>
+
+    <!-- Initialize Widget -->
+    <script>
+        window.MyChatbotWidget.init({
+            siteId: window.MyChatbotConfig.siteId
+        });
+    </script>
+</body>
+
+</html>

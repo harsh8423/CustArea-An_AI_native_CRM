@@ -1,0 +1,40 @@
+{
+  "name": "speech-token-server",
+  "version": "1.0.0",
+  "description": "Azure Speech Token Server",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js"
+  },
+  "dependencies": {
+    "@aws-sdk/client-sesv2": "^3.950.0",
+    "@google/genai": "^1.33.0",
+    "axios": "^1.6.0",
+    "bcryptjs": "^3.0.3",
+    "body-parser": "^1.20.2",
+    "cors": "^2.8.5",
+    "csv-parser": "^3.2.0",
+    "dotenv": "^16.6.1",
+    "express": "^4.22.1",
+    "groq-sdk": "^0.37.0",
+    "helmet": "^8.1.0",
+    "ioredis": "^5.8.2",
+    "jsonwebtoken": "^9.0.3",
+    "microsoft-cognitiveservices-speech-sdk": "^1.47.0",
+    "mongoose": "^9.0.1",
+    "morgan": "^1.10.1",
+    "mu-law": "^0.0.1",
+    "multer": "^2.0.2",
+    "nodemon": "^3.1.11",
+    "openai": "^6.10.0",
+    "pdf-parse": "^2.4.5",
+    "pg": "^8.16.3",
+    "twilio": "^5.10.7",
+    "ws": "^8.18.3"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs"
+}
