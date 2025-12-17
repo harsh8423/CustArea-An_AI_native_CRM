@@ -372,6 +372,29 @@ exports.handler = async (event) => {
       - contactId: ${contactId}
       - attachments: ${attachmentRecords.length}`);
 
+    // 9. Queue message for AI processing (call backend API)
+    const backendUrl = process.env.BACKEND_API_URL;
+    if (backendUrl) {
+      try {
+        const response = await fetch(`${backendUrl}/api/ai/queue/${msgId}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            tenantId,
+            conversationId,
+            channel: 'email'
+          })
+        });
+        const result = await response.json();
+        console.log(`AI queue result: queued=${result.queued}, reason=${result.reason || 'success'}`);
+      } catch (aiErr) {
+        console.warn('Failed to queue for AI processing:', aiErr.message);
+        // Don't throw - email is already saved, AI queueing is optional
+      }
+    } else {
+      console.log('BACKEND_API_URL not set, skipping AI queue');
+    }
+
   } catch (err) {
     console.error("DB operation failed:", err);
     try {
@@ -384,3 +407,4 @@ exports.handler = async (event) => {
     if (client) client.release();
   }
 };
+

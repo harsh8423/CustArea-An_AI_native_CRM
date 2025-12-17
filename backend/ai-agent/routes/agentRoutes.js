@@ -50,7 +50,13 @@ router.get('/escalation/guidance', controller.getEscalationGuidances);
 router.post('/escalation/guidance', controller.createEscalationGuidance);
 router.delete('/escalation/guidance/:id', controller.deleteEscalationGuidance);
 
+// ================== DEPLOYMENT ==================
+const deploymentController = require('../../controllers/agentDeploymentController');
+router.get('/deployments', deploymentController.getDeployments);
+router.put('/deployments/:channel', deploymentController.updateDeployment);
+
 // ================== CHAT ==================
 router.post('/chat', controller.chatWithAgent);
 
 module.exports = router;
+

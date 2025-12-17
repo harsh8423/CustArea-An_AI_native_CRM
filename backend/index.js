@@ -15,10 +15,7 @@ app.use(bodyParser.json());
 
 // Allow your Next.js origin in dev
 app.use(
-  cors({
-    origin: ['http://localhost:3000'],
-    credentials: true,
-  })
+  cors({})
 );
 
 const authRoutes = require('./routes/authRoutes');
@@ -45,6 +42,14 @@ app.use('/api/messages', messageRoutes);
 app.use('/api/webhooks', webhookRoutes);
 app.use('/api/channels', channelRoutes);
 app.use('/api/ai-agent', agentRoutes);
+
+// AI Processing routes (for Lambda integration)
+const aiProcessingController = require('./controllers/aiProcessingController');
+app.post('/api/ai/queue/:messageId', aiProcessingController.queueMessageForAI);
+
+// Chat Widget routes (public API for embeddable widget)
+const { routes: widgetRoutes } = require('./chat_widget');
+app.use('/api/widget', widgetRoutes);
 
 // Also mount webhooks at /webhook for Twilio compatibility
 app.use('/webhook', webhookRoutes);
@@ -108,6 +113,7 @@ app.use((err, req, res, next) => {
 const { initRedisStreams } = require('./config/redis');
 const { runWhatsappOutboundWorker } = require('./workers/whatsappOutbound');
 const { runEmailOutboundWorker } = require('./workers/emailOutbound');
+const { runAiIncomingWorker } = require('./workers/aiIncomingWorker');
 
 const port = process.env.PORT || 8000;
 const server = app.listen(port, async () => {
@@ -127,14 +133,17 @@ const server = app.listen(port, async () => {
     await initRedisStreams();
     console.log('✓ Redis streams initialized');
 
-    console.log('Starting outbound workers...');
+    console.log('Starting workers...');
     runWhatsappOutboundWorker().catch(err => {
       console.error('WhatsApp worker error:', err);
     });
     runEmailOutboundWorker().catch(err => {
       console.error('Email worker error:', err);
     });
-    console.log('✓ Outbound workers started');
+    runAiIncomingWorker().catch(err => {
+      console.error('AI Incoming worker error:', err);
+    });
+    console.log('✓ All workers started');
   } catch (err) {
     console.error('Failed to initialize workers:', err);
   }
@@ -146,12 +155,15 @@ const { setupOpenAIRealtimeService } = require('./services/llm/openaiRealtimeSer
 const { setupTwilioWebSocket } = require('./services/twilioWebSocketService');
 const { setupOpenAIRealtimeTwilio } = require('./services/openaiRealtimeTwilioService');
 const { setupLegacyTwilioService } = require('./services/legacyTwilioService');
-const twimlRoutes = require('./routes/twiml');
+
+// Phone module with AI Agent integration
+const { setupLegacyHandler, setupRealtimeHandler, setupConvRelayHandler, routes: phoneRoutes } = require('./phone');
+
 const url = require('url');
 
-// Register TwiML route
-// Register TwiML route
-app.use('/twiml', twimlRoutes);
+// Phone Routes - mount at both /api/phone and /twiml for backwards compatibility with Twilio webhooks
+app.use('/api/phone', phoneRoutes);
+app.use('/twiml', phoneRoutes);  // Twilio webhook hits /twiml for inbound calls
 app.use('/make-call', require('./routes/outbound'));
 
 
@@ -161,8 +173,14 @@ const twilioWss = setupTwilioWebSocket();
 const openaiTwilioWss = setupOpenAIRealtimeTwilio();
 const legacyTwilioWss = setupLegacyTwilioService();
 
+// Phone module WebSocket handlers (with AI Agent integration)
+const phoneLegacyWss = setupLegacyHandler();
+const phoneRealtimeWss = setupRealtimeHandler();
+const phoneConvRelayWss = setupConvRelayHandler();
+
 server.on('upgrade', (request, socket, head) => {
-  const pathname = url.parse(request.url).pathname;
+  const parsedUrl = url.parse(request.url, true);
+  const pathname = parsedUrl.pathname;
 
   if (pathname === '/client-audio') {
     sttWss.handleUpgrade(request, socket, head, (ws) => {
@@ -183,6 +201,20 @@ server.on('upgrade', (request, socket, head) => {
   } else if (pathname === '/twilio-stream-legacy') {
     legacyTwilioWss.handleUpgrade(request, socket, head, (ws) => {
       legacyTwilioWss.emit('connection', ws, request);
+    });
+  // Phone module WebSocket routes (with AI Agent integration)
+  // Use startsWith because path includes sessionId: /phone-ws/legacy/{sessionId}
+  } else if (pathname.startsWith('/phone-ws/legacy/')) {
+    phoneLegacyWss.handleUpgrade(request, socket, head, (ws) => {
+      phoneLegacyWss.emit('connection', ws, request);
+    });
+  } else if (pathname.startsWith('/phone-ws/realtime/')) {
+    phoneRealtimeWss.handleUpgrade(request, socket, head, (ws) => {
+      phoneRealtimeWss.emit('connection', ws, request);
+    });
+  } else if (pathname.startsWith('/phone-ws/convrelay/')) {
+    phoneConvRelayWss.handleUpgrade(request, socket, head, (ws) => {
+      phoneConvRelayWss.emit('connection', ws, request);
     });
   } else {
     socket.destroy();

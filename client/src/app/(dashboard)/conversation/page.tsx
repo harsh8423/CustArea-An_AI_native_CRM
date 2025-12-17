@@ -8,6 +8,10 @@ import {
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import dynamic from 'next/dynamic';
+
+// Dynamic import PhoneModal to avoid SSR issues with Twilio SDK
+const PhoneModal = dynamic(() => import('@/components/PhoneModal'), { ssr: false });
 
 interface Conversation {
     id: string;
@@ -75,6 +79,7 @@ export default function ConversationPage() {
     const [showDetails, setShowDetails] = useState(true);
     const [stats, setStats] = useState<any>(null);
     const [detailsTab, setDetailsTab] = useState<"details" | "copilot">("details");
+    const [showPhoneModal, setShowPhoneModal] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
     const fetchConversations = useCallback(async () => {
@@ -202,15 +207,24 @@ export default function ConversationPage() {
                                     {filteredConversations.length} conversations
                                 </p>
                             </div>
-                            <button
-                                onClick={fetchConversations}
-                                className="p-2 hover:bg-gray-50 rounded-xl transition-all duration-200 group"
-                            >
-                                <RefreshCw className={cn(
-                                    "h-4 w-4 text-gray-400 group-hover:text-gray-600 transition-colors",
-                                    loading && "animate-spin"
-                                )} />
-                            </button>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => setShowPhoneModal(true)}
+                                    className="p-2 bg-gradient-to-r from-blue-500 to-indigo-600 hover:opacity-90 text-white rounded-xl transition-all duration-200"
+                                    title="Make a call"
+                                >
+                                    <Phone className="h-4 w-4" />
+                                </button>
+                                <button
+                                    onClick={fetchConversations}
+                                    className="p-2 hover:bg-gray-50 rounded-xl transition-all duration-200 group"
+                                >
+                                    <RefreshCw className={cn(
+                                        "h-4 w-4 text-gray-400 group-hover:text-gray-600 transition-colors",
+                                        loading && "animate-spin"
+                                    )} />
+                                </button>
+                            </div>
                         </div>
 
                         {/* Mini Tabs */}
@@ -663,6 +677,12 @@ export default function ConversationPage() {
                     </div>
                 )}
             </div>
+
+            {/* Phone Modal - Always mounted to handle incoming calls */}
+            <PhoneModal
+                isOpen={showPhoneModal}
+                onClose={() => setShowPhoneModal(false)}
+            />
         </div>
     );
 }

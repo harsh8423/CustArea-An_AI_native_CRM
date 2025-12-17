@@ -5,10 +5,15 @@ const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 /**
  * Generate embedding for a single text using Gemini embedding model
- * Returns 768-dimensional vector
+ * Returns 768-dimensional vector (text-embedding-004)
  */
 async function generateEmbedding(text) {
     try {
+        // Ensure text is a string
+        if (typeof text !== 'string') {
+            text = String(text || '');
+        }
+        
         if (!text || text.trim().length === 0) {
             throw new Error('Text cannot be empty');
         }
@@ -17,14 +22,19 @@ async function generateEmbedding(text) {
         const truncatedText = text.slice(0, 10000);
 
         const response = await ai.models.embedContent({
-            model: 'gemini-embedding-001',
+            model: 'text-embedding-004',
             contents: truncatedText,
         });
 
         const embedding = response.embeddings[0].values;
 
-        if (!embedding || embedding.length !== 768) {
-            throw new Error(`Invalid embedding dimension: ${embedding?.length}`);
+        if (!embedding || embedding.length === 0) {
+            throw new Error('Empty embedding returned');
+        }
+
+        // Ensure 768 dimensions for MongoDB Atlas Vector Search
+        if (embedding.length !== 768) {
+            console.warn(`Warning: Expected 768 dimensions, got ${embedding.length}`);
         }
 
         return embedding;

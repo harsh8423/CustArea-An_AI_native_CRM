@@ -24,7 +24,8 @@ async function extractPdfText(buffer) {
             text: data.text,
             numPages: data.numpages,
             info: data.info
-        };
+        }
+        ;
     } catch (error) {
         console.error('Error parsing PDF:', error);
         throw new Error('Failed to parse PDF document');

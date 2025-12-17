@@ -1,6 +1,8 @@
 const twilio = require('twilio');
 const { pool } = require('../config/db');
 const { queueIncomingMessage } = require('../config/redis');
+const { findOrCreateContact } = require('./contactResolver');
+const { shouldAgentRespond } = require('../controllers/agentDeploymentController');
 
 /**
  * Get WhatsApp account by phone number (for webhook resolution)
@@ -71,7 +73,7 @@ async function sendMessage(tenantId, to, body) {
  * Handle incoming WhatsApp message webhook
  */
 async function handleIncomingWebhook(webhookData) {
-    const { From, To, Body, MessageSid } = webhookData;
+    const { From, To, Body, MessageSid, ProfileName } = webhookData;
 
     // 1. Resolve tenant by phone number
     const account = await getAccountByPhoneNumber(To);
@@ -82,20 +84,19 @@ async function handleIncomingWebhook(webhookData) {
 
     const tenantId = account.tenant_id;
 
-    // 2. Find or create contact
-    let contactResult = await pool.query(
-        `SELECT * FROM contacts WHERE tenant_id = $1 AND phone = $2`,
-        [tenantId, From.replace('whatsapp:', '')]
+    // 2. Find or create contact using ContactResolver (cross-channel deduplication)
+    const phoneNumber = From.replace('whatsapp:', '');
+    const { contact, isNew } = await findOrCreateContact(
+        tenantId,
+        { phone: phoneNumber },
+        { name: ProfileName || null, source: 'whatsapp' }
     );
 
-    let contact;
-    if (contactResult.rows.length === 0) {
-        contactResult = await pool.query(
-            `INSERT INTO contacts (tenant_id, phone, source) VALUES ($1, $2, 'whatsapp') RETURNING *`,
-            [tenantId, From.replace('whatsapp:', '')]
-        );
+    if (isNew) {
+        console.log(`Created new contact ${contact.id} from WhatsApp: ${phoneNumber}`);
+    } else {
+        console.log(`Found existing contact ${contact.id} for WhatsApp: ${phoneNumber}`);
     }
-    contact = contactResult.rows[0];
 
     // 3. Find or create conversation
     let convResult = await pool.query(
@@ -134,9 +135,15 @@ async function handleIncomingWebhook(webhookData) {
         [message.id, From, MessageSid, JSON.stringify(webhookData)]
     );
 
-    // 6. Queue for AI processing
+    // 6. Queue for AI processing (only if AI deployment is enabled and within schedule)
     try {
-        await queueIncomingMessage(message.id, tenantId, conversation.id, 'whatsapp');
+        const aiEnabled = await shouldAgentRespond(tenantId, 'whatsapp');
+        if (aiEnabled) {
+            await queueIncomingMessage(message.id, tenantId, conversation.id, 'whatsapp');
+            console.log(`[WhatsApp] Queued message ${message.id} for AI processing`);
+        } else {
+            console.log(`[WhatsApp] AI not enabled for tenant ${tenantId}, skipping AI queue`);
+        }
     } catch (err) {
         console.error('Failed to queue WhatsApp message:', err);
     }

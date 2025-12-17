@@ -28,7 +28,7 @@ const knowledgeChunkSchema = new mongoose.Schema({
         default: 0
     },
 
-    // Embedding vector (768 dimensions for Gemini embedding-001)
+    // Embedding vector (768 dimensions for Gemini text-embedding-004)
     embedding: {
         type: [Number],
         required: true,

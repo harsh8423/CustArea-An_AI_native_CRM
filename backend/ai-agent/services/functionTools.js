@@ -182,7 +182,7 @@ async function getContactInfo(tenantId, contactId) {
     try {
         const result = await pool.query(
             `SELECT id, name, email, phone, company_name, source, 
-                    created_at, metadata, score
+                    created_at, metadata
              FROM contacts 
              WHERE id = $1 AND tenant_id = $2`,
             [contactId, tenantId]
@@ -201,7 +201,6 @@ async function getContactInfo(tenantId, contactId) {
             company: contact.company_name,
             source: contact.source,
             created: contact.created_at,
-            score: contact.score,
             metadata: contact.metadata || {}
         };
     } catch (error) {

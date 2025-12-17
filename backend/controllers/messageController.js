@@ -1,5 +1,6 @@
 const { pool } = require('../config/db');
 const { queueIncomingMessage, queueOutgoingMessage } = require('../config/redis');
+const { findOrCreateContact } = require('../services/contactResolver');
 
 // ===== MESSAGES =====
 
@@ -241,6 +242,31 @@ exports.receiveInboundMessage = async (req, res) => {
     try {
         await client.query('BEGIN');
 
+        // === CONTACT RESOLUTION (Cross-channel deduplication) ===
+        // Extract identifiers based on channel
+        const identifiers = {};
+        if (channel === 'email') {
+            identifiers.email = channelContactId;
+        } else if (channel === 'whatsapp') {
+            identifiers.phone = channelContactId.replace('whatsapp:', '');
+        } else if (channel === 'widget') {
+            identifiers.visitorId = channelContactId;
+            // Also check for email if provided in metadata
+            if (channelMetadata.email) {
+                identifiers.email = channelMetadata.email;
+            }
+        }
+
+        // Find or create contact using ContactResolver
+        const { contact, isNew } = await findOrCreateContact(
+            tenantId,
+            identifiers,
+            { 
+                name: channelMetadata.name || channelMetadata.senderName,
+                source: channel 
+            }
+        );
+
         // Find or create conversation
         let convResult = await client.query(
             `SELECT * FROM conversations 
@@ -250,21 +276,31 @@ exports.receiveInboundMessage = async (req, res) => {
         );
 
         let conversation;
-        let isNew = false;
+        let isNewConversation = false;
 
         if (convResult.rows.length === 0) {
-            // Create new conversation
+            // Create new conversation with contact linked
             const newConv = await client.query(
                 `INSERT INTO conversations (
-                    tenant_id, channel, channel_contact_id, subject, status
-                ) VALUES ($1, $2, $3, $4, 'open')
+                    tenant_id, contact_id, channel, channel_contact_id, subject, status
+                ) VALUES ($1, $2, $3, $4, $5, 'open')
                 RETURNING *`,
-                [tenantId, channel, channelContactId, subject]
+                [tenantId, contact.id, channel, channelContactId, subject]
             );
             conversation = newConv.rows[0];
-            isNew = true;
+            isNewConversation = true;
         } else {
             conversation = convResult.rows[0];
+            
+            // Link contact to conversation if not already linked
+            if (!conversation.contact_id && contact) {
+                await client.query(
+                    `UPDATE conversations SET contact_id = $1 WHERE id = $2`,
+                    [contact.id, conversation.id]
+                );
+                conversation.contact_id = contact.id;
+            }
+            
             // Reopen if pending/resolved
             if (conversation.status === 'pending' || conversation.status === 'resolved') {
                 await client.query(
@@ -349,7 +385,8 @@ exports.receiveInboundMessage = async (req, res) => {
         res.status(201).json({ 
             message, 
             conversation,
-            isNewConversation: isNew
+            contact,
+            isNewConversation
         });
     } catch (err) {
         await client.query('ROLLBACK');
