@@ -21,13 +21,24 @@ import {
     Rocket,
     GitBranch,
     Users,
-    Sparkles
+    Sparkles,
+    Ticket,
+    List,
+    Zap,
+    Tag,
+    AlertCircle,
+    Clock,
+    PauseCircle,
+    CheckCircle2,
+    XCircle
 } from "lucide-react"
 
 interface SubItem {
     label: string
     href: string
     icon?: any
+    isStatusFilter?: boolean  // For visual grouping
+    isDivider?: boolean       // To add separator line
 }
 
 interface Route {
@@ -64,6 +75,23 @@ const routes: Route[] = [
         icon: MessageSquare,
         href: "/conversation",
         color: "from-emerald-500 to-teal-600",
+    },
+    {
+        label: "Tickets",
+        icon: Ticket,
+        href: "/tickets",
+        color: "from-rose-500 to-pink-600",
+        subItems: [
+            { label: "All Tickets", href: "/tickets", icon: List },
+            { label: "Open", href: "/tickets?status=open", icon: Clock, isStatusFilter: true },
+            { label: "Pending", href: "/tickets?status=pending", icon: PauseCircle, isStatusFilter: true },
+            { label: "On Hold", href: "/tickets?status=on_hold", icon: PauseCircle, isStatusFilter: true },
+            { label: "Resolved", href: "/tickets?status=resolved", icon: CheckCircle2, isStatusFilter: true },
+            { label: "Closed", href: "/tickets?status=closed", icon: XCircle, isStatusFilter: true },
+            { label: "divider", href: "", isDivider: true },
+            { label: "Macros", href: "/tickets/macros", icon: Zap },
+            { label: "Tags", href: "/tickets/tags", icon: Tag },
+        ]
     },
     {
         label: "Workflow",
@@ -252,24 +280,41 @@ export function Sidebar() {
                         <div className="flex-1 overflow-y-auto px-3 pb-3">
                             {activeItem.subItems ? (
                                 <div className="space-y-1">
-                                    {activeItem.subItems.map((sub) => (
-                                        <Link
-                                            key={sub.href}
-                                            href={sub.href}
-                                            className={cn(
-                                                "flex items-center justify-between px-3 py-2.5 text-sm font-medium rounded-xl transition-all duration-200",
-                                                pathname === sub.href
-                                                    ? "bg-gray-50 text-gray-900"
-                                                    : "text-gray-600 hover:bg-gray-50 hover:text-gray-800"
-                                            )}
-                                        >
-                                            <div className="flex items-center gap-3">
-                                                {sub.icon && <sub.icon className="h-4 w-4 text-gray-400" />}
-                                                <span>{sub.label}</span>
-                                            </div>
-                                            <ChevronRight className="h-3.5 w-3.5 text-gray-300" />
-                                        </Link>
-                                    ))}
+                                    {activeItem.subItems.map((sub, index) => {
+                                        // Handle divider
+                                        if (sub.isDivider) {
+                                            return <div key={index} className="border-t border-gray-100 my-2" />;
+                                        }
+
+                                        const isActive = pathname === sub.href ||
+                                            (sub.href.includes('?') && pathname + window?.location?.search === sub.href);
+
+                                        return (
+                                            <Link
+                                                key={sub.href}
+                                                href={sub.href}
+                                                className={cn(
+                                                    "flex items-center justify-between py-2.5 text-sm font-medium rounded-xl transition-all duration-200",
+                                                    sub.isStatusFilter ? "pl-10 pr-3" : "px-3",
+                                                    isActive
+                                                        ? "bg-rose-50 text-rose-600"
+                                                        : "text-gray-600 hover:bg-gray-50 hover:text-gray-800"
+                                                )}
+                                            >
+                                                <div className="flex items-center gap-3">
+                                                    {sub.icon && <sub.icon className={cn(
+                                                        "h-4 w-4",
+                                                        isActive ? "text-rose-500" : "text-gray-400"
+                                                    )} />}
+                                                    <span>{sub.label}</span>
+                                                </div>
+                                                <ChevronRight className={cn(
+                                                    "h-3.5 w-3.5",
+                                                    isActive ? "text-rose-400" : "text-gray-300"
+                                                )} />
+                                            </Link>
+                                        );
+                                    })}
                                 </div>
                             ) : (
                                 <div className="p-4 text-center text-gray-400 text-sm">

@@ -339,7 +339,7 @@ export const api = {
             });
             return res.json();
         },
-        update: async (id: string, data: { status?: string; priority?: string; assignedTo?: string; aiEnabled?: boolean }) => {
+        update: async (id: string, data: { status?: string; priority?: string; assignedTo?: string; aiEnabled?: boolean; ticketId?: string }) => {
             const token = localStorage.getItem("token");
             const res = await fetch(`${API_BASE_URL}/conversations/${id}`, {
                 method: "PATCH",
@@ -492,6 +492,228 @@ export const api = {
         deletePhone: async () => {
             const token = localStorage.getItem("token");
             const res = await fetch(`${API_BASE_URL}/channels/phone`, {
+                method: "DELETE",
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            return res.json();
+        }
+    },
+    tickets: {
+        list: async (params?: { status?: string; priority?: string; assignedTo?: string; tagId?: string; search?: string; limit?: number; offset?: number }) => {
+            const token = localStorage.getItem("token");
+            const query = params ? new URLSearchParams(params as any).toString() : "";
+            const res = await fetch(`${API_BASE_URL}/tickets?${query}`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            return res.json();
+        },
+        get: async (id: string) => {
+            const token = localStorage.getItem("token");
+            const res = await fetch(`${API_BASE_URL}/tickets/${id}`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            return res.json();
+        },
+        create: async (data: { subject: string; description?: string; contactId?: string; sourceConversationId?: string; priority?: string; status?: string; sentiment?: string; intent?: string; summary?: string; tagIds?: string[] }) => {
+            const token = localStorage.getItem("token");
+            const res = await fetch(`${API_BASE_URL}/tickets`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`
+                },
+                body: JSON.stringify(data)
+            });
+            return res.json();
+        },
+        update: async (id: string, data: { subject?: string; description?: string; status?: string; priority?: string; assignedTo?: string; sentiment?: string; intent?: string; summary?: string; dueAt?: string }) => {
+            const token = localStorage.getItem("token");
+            const res = await fetch(`${API_BASE_URL}/tickets/${id}`, {
+                method: "PATCH",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`
+                },
+                body: JSON.stringify(data)
+            });
+            return res.json();
+        },
+        delete: async (id: string) => {
+            const token = localStorage.getItem("token");
+            const res = await fetch(`${API_BASE_URL}/tickets/${id}`, {
+                method: "DELETE",
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            return res.json();
+        },
+        getStats: async () => {
+            const token = localStorage.getItem("token");
+            const res = await fetch(`${API_BASE_URL}/tickets/stats`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            return res.json();
+        },
+        // Notes
+        getNotes: async (ticketId: string) => {
+            const token = localStorage.getItem("token");
+            const res = await fetch(`${API_BASE_URL}/tickets/${ticketId}/notes`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            return res.json();
+        },
+        addNote: async (ticketId: string, data: { content: string; isPinned?: boolean }) => {
+            const token = localStorage.getItem("token");
+            const res = await fetch(`${API_BASE_URL}/tickets/${ticketId}/notes`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`
+                },
+                body: JSON.stringify(data)
+            });
+            return res.json();
+        },
+        updateNote: async (ticketId: string, noteId: string, data: { content?: string; isPinned?: boolean }) => {
+            const token = localStorage.getItem("token");
+            const res = await fetch(`${API_BASE_URL}/tickets/${ticketId}/notes/${noteId}`, {
+                method: "PATCH",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`
+                },
+                body: JSON.stringify(data)
+            });
+            return res.json();
+        },
+        deleteNote: async (ticketId: string, noteId: string) => {
+            const token = localStorage.getItem("token");
+            const res = await fetch(`${API_BASE_URL}/tickets/${ticketId}/notes/${noteId}`, {
+                method: "DELETE",
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            return res.json();
+        },
+        // Activities
+        getActivities: async (ticketId: string, limit?: number) => {
+            const token = localStorage.getItem("token");
+            const query = limit ? `?limit=${limit}` : "";
+            const res = await fetch(`${API_BASE_URL}/tickets/${ticketId}/activities${query}`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            return res.json();
+        },
+        // Tags
+        addTags: async (ticketId: string, tagIds: string[]) => {
+            const token = localStorage.getItem("token");
+            const res = await fetch(`${API_BASE_URL}/tickets/${ticketId}/tags`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`
+                },
+                body: JSON.stringify({ tagIds })
+            });
+            return res.json();
+        },
+        removeTag: async (ticketId: string, tagId: string) => {
+            const token = localStorage.getItem("token");
+            const res = await fetch(`${API_BASE_URL}/tickets/${ticketId}/tags/${tagId}`, {
+                method: "DELETE",
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            return res.json();
+        },
+        // Macros
+        applyMacro: async (ticketId: string, macroId: string) => {
+            const token = localStorage.getItem("token");
+            const res = await fetch(`${API_BASE_URL}/tickets/${ticketId}/apply-macro`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`
+                },
+                body: JSON.stringify({ macroId })
+            });
+            return res.json();
+        }
+    },
+    ticketTags: {
+        list: async () => {
+            const token = localStorage.getItem("token");
+            const res = await fetch(`${API_BASE_URL}/ticket-tags`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            return res.json();
+        },
+        create: async (data: { name: string; color?: string; description?: string }) => {
+            const token = localStorage.getItem("token");
+            const res = await fetch(`${API_BASE_URL}/ticket-tags`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`
+                },
+                body: JSON.stringify(data)
+            });
+            return res.json();
+        },
+        update: async (id: string, data: { name?: string; color?: string; description?: string }) => {
+            const token = localStorage.getItem("token");
+            const res = await fetch(`${API_BASE_URL}/ticket-tags/${id}`, {
+                method: "PATCH",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`
+                },
+                body: JSON.stringify(data)
+            });
+            return res.json();
+        },
+        delete: async (id: string) => {
+            const token = localStorage.getItem("token");
+            const res = await fetch(`${API_BASE_URL}/ticket-tags/${id}`, {
+                method: "DELETE",
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            return res.json();
+        }
+    },
+    macros: {
+        list: async (activeOnly?: boolean) => {
+            const token = localStorage.getItem("token");
+            const query = activeOnly !== undefined ? `?activeOnly=${activeOnly}` : "";
+            const res = await fetch(`${API_BASE_URL}/macros${query}`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            return res.json();
+        },
+        create: async (data: { name: string; description?: string; macroType?: string; actions?: any[]; scheduleDelayHours?: number }) => {
+            const token = localStorage.getItem("token");
+            const res = await fetch(`${API_BASE_URL}/macros`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`
+                },
+                body: JSON.stringify(data)
+            });
+            return res.json();
+        },
+        update: async (id: string, data: { name?: string; description?: string; macroType?: string; actions?: any[]; scheduleDelayHours?: number; isActive?: boolean }) => {
+            const token = localStorage.getItem("token");
+            const res = await fetch(`${API_BASE_URL}/macros/${id}`, {
+                method: "PATCH",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`
+                },
+                body: JSON.stringify(data)
+            });
+            return res.json();
+        },
+        delete: async (id: string) => {
+            const token = localStorage.getItem("token");
+            const res = await fetch(`${API_BASE_URL}/macros/${id}`, {
                 method: "DELETE",
                 headers: { Authorization: `Bearer ${token}` }
             });

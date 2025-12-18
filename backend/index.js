@@ -28,6 +28,9 @@ const messageRoutes = require('./routes/messageRoutes');
 const webhookRoutes = require('./routes/webhookRoutes');
 const channelRoutes = require('./routes/channelRoutes');
 const agentRoutes = require('./ai-agent/routes/agentRoutes');
+const ticketRoutes = require('./routes/ticketRoutes');
+const ticketTagRoutes = require('./routes/ticketTagRoutes');
+const macroRoutes = require('./routes/macroRoutes');
 
 // MongoDB connection for AI Agent
 const { connectMongoDB } = require('./config/mongodb');
@@ -42,6 +45,9 @@ app.use('/api/messages', messageRoutes);
 app.use('/api/webhooks', webhookRoutes);
 app.use('/api/channels', channelRoutes);
 app.use('/api/ai-agent', agentRoutes);
+app.use('/api/tickets', ticketRoutes);
+app.use('/api/ticket-tags', ticketTagRoutes);
+app.use('/api/macros', macroRoutes);
 
 // AI Processing routes (for Lambda integration)
 const aiProcessingController = require('./controllers/aiProcessingController');

@@ -4,7 +4,8 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import {
     Mail, MessageCircle, Phone, Search, MoreHorizontal,
     Send, Paperclip, Smile, Star, ChevronDown, ChevronUp,
-    User, Tag, Edit, MessageSquare, RefreshCw, Check, Sparkles
+    User, Tag, Edit, MessageSquare, RefreshCw, Check, Sparkles,
+    Ticket, X, Zap
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -29,6 +30,7 @@ interface Conversation {
     contact_name: string | null;
     contact_email: string | null;
     assigned_to_name: string | null;
+    ticket_id?: string | null;  // Link to ticket if exists
 }
 
 interface Message {
@@ -82,15 +84,27 @@ export default function ConversationPage() {
     const [showPhoneModal, setShowPhoneModal] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
+    // Create ticket from conversation state
+    const [showCreateTicketModal, setShowCreateTicketModal] = useState(false);
+    const [availableMacros, setAvailableMacros] = useState<any[]>([]);
+    const [ticketForm, setTicketForm] = useState({
+        subject: "",
+        notes: "",
+        macroId: ""
+    });
+    const [creatingTicket, setCreatingTicket] = useState(false);
+
     const fetchConversations = useCallback(async () => {
         setLoading(true);
         try {
-            const [convRes, statsRes] = await Promise.all([
+            const [convRes, statsRes, macrosRes] = await Promise.all([
                 api.conversations.list({ status: activeTab, limit: 50 }),
-                api.conversations.getStats()
+                api.conversations.getStats(),
+                api.macros.list(true)
             ]);
             setConversations(convRes.conversations || []);
             setStats(statsRes.stats);
+            setAvailableMacros(macrosRes.macros || []);
         } catch (err) {
             console.error("Failed to fetch conversations:", err);
         } finally {
@@ -150,6 +164,52 @@ export default function ConversationPage() {
             setSelectedConversation(prev => prev ? { ...prev, status } : null);
         } catch (err) {
             console.error("Failed to update status:", err);
+        }
+    };
+
+    const openCreateTicketModal = () => {
+        setTicketForm({
+            subject: selectedConversation?.subject || `Ticket from ${selectedConversation?.contact_name || selectedConversation?.channel_contact_id || "conversation"}`,
+            notes: "",
+            macroId: ""
+        });
+        setShowCreateTicketModal(true);
+    };
+
+    const handleCreateTicket = async () => {
+        if (!selectedConversation || !ticketForm.subject.trim()) return;
+        setCreatingTicket(true);
+        try {
+            // Create the ticket linked to this conversation with status open
+            const res = await api.tickets.create({
+                subject: ticketForm.subject,
+                description: ticketForm.notes || undefined,
+                contactId: selectedConversation.contact_id || undefined,
+                sourceConversationId: selectedConversation.id,
+                priority: "normal",
+                status: "open"  // Set status to open when creating from conversation
+            });
+
+            // If a macro is selected, apply it
+            if (ticketForm.macroId && res.ticket?.id) {
+                await api.tickets.applyMacro(res.ticket.id, ticketForm.macroId);
+            }
+
+            // Update the conversation to link the ticket
+            if (res.ticket?.id) {
+                await api.conversations.update(selectedConversation.id, { ticketId: res.ticket.id });
+                // Update local state to show ticket indicator
+                setSelectedConversation(prev => prev ? { ...prev, ticket_id: res.ticket.id } : null);
+            }
+
+            setShowCreateTicketModal(false);
+            fetchConversations(); // Refresh to get updated ticket_id
+            alert(`Ticket #${res.ticket?.ticket_number || ''} created successfully!`);
+        } catch (err) {
+            console.error("Failed to create ticket:", err);
+            alert("Failed to create ticket");
+        } finally {
+            setCreatingTicket(false);
         }
     };
 
@@ -334,6 +394,12 @@ export default function ConversationPage() {
                                                 <p className="text-xs text-gray-400 truncate mt-1">
                                                     {conv.subject || `${conv.channel.charAt(0).toUpperCase() + conv.channel.slice(1)} conversation`}
                                                 </p>
+                                                {conv.ticket_id && (
+                                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-rose-50 text-rose-600 text-[10px] font-medium mt-1.5">
+                                                        <Ticket className="h-2.5 w-2.5" />
+                                                        Ticket Created
+                                                    </span>
+                                                )}
                                             </div>
                                         </button>
                                     );
@@ -386,6 +452,14 @@ export default function ConversationPage() {
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-1">
+                                    <button
+                                        onClick={openCreateTicketModal}
+                                        className="flex items-center gap-1.5 px-3 py-2 bg-gradient-to-r from-rose-500 to-pink-600 text-white rounded-xl hover:opacity-90 transition-all duration-200 text-xs font-medium"
+                                        title="Create ticket from this conversation"
+                                    >
+                                        <Ticket className="h-3.5 w-3.5" />
+                                        <span>Create Ticket</span>
+                                    </button>
                                     <button className="p-2.5 hover:bg-gray-100 rounded-xl transition-all duration-200">
                                         <Star className="h-4 w-4 text-gray-400" />
                                     </button>
@@ -683,6 +757,113 @@ export default function ConversationPage() {
                 isOpen={showPhoneModal}
                 onClose={() => setShowPhoneModal(false)}
             />
+
+            {/* Create Ticket Modal */}
+            {showCreateTicketModal && selectedConversation && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+                    <div className="bg-white rounded-2xl w-full max-w-lg shadow-xl">
+                        <div className="p-6 border-b border-gray-100">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                    <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-rose-500 to-pink-600 flex items-center justify-center">
+                                        <Ticket className="h-5 w-5 text-white" />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-lg font-semibold text-gray-900">Create Ticket</h3>
+                                        <p className="text-xs text-gray-500">From {selectedConversation.channel} conversation</p>
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={() => setShowCreateTicketModal(false)}
+                                    className="p-2 hover:bg-gray-100 rounded-lg"
+                                >
+                                    <X className="h-4 w-4 text-gray-400" />
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="p-6 space-y-4">
+                            <div>
+                                <label className="text-sm font-medium text-gray-700 mb-1 block">Subject *</label>
+                                <input
+                                    type="text"
+                                    value={ticketForm.subject}
+                                    onChange={(e) => setTicketForm(prev => ({ ...prev, subject: e.target.value }))}
+                                    placeholder="Brief description of the issue"
+                                    className="w-full px-4 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-100 focus:border-rose-300"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="text-sm font-medium text-gray-700 mb-1 block">Initial Note</label>
+                                <textarea
+                                    value={ticketForm.notes}
+                                    onChange={(e) => setTicketForm(prev => ({ ...prev, notes: e.target.value }))}
+                                    placeholder="Add internal notes about this ticket..."
+                                    rows={3}
+                                    className="w-full px-4 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-100 focus:border-rose-300 resize-none"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="text-sm font-medium text-gray-700 mb-1 block">Apply Macro (Optional)</label>
+                                <select
+                                    value={ticketForm.macroId}
+                                    onChange={(e) => setTicketForm(prev => ({ ...prev, macroId: e.target.value }))}
+                                    className="w-full px-4 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-100 focus:border-rose-300"
+                                >
+                                    <option value="">No macro</option>
+                                    {availableMacros.map(macro => (
+                                        <option key={macro.id} value={macro.id}>{macro.name} - {macro.description || macro.macro_type}</option>
+                                    ))}
+                                </select>
+                                {ticketForm.macroId && (
+                                    <p className="text-xs text-gray-400 mt-1 flex items-center gap-1">
+                                        <Zap className="h-3 w-3" />
+                                        Macro will be applied after ticket creation
+                                    </p>
+                                )}
+                            </div>
+
+                            {/* Linked conversation info */}
+                            <div className="bg-gray-50 rounded-xl p-3">
+                                <p className="text-xs text-gray-500 mb-1">This ticket will be linked to:</p>
+                                <div className="flex items-center gap-2">
+                                    <div className={cn(
+                                        "h-6 w-6 rounded-md flex items-center justify-center text-white text-xs",
+                                        CHANNEL_BG[selectedConversation.channel] || "bg-gray-500"
+                                    )}>
+                                        {(() => {
+                                            const Icon = getChannelIcon(selectedConversation.channel);
+                                            return <Icon className="h-3 w-3" />;
+                                        })()}
+                                    </div>
+                                    <span className="text-sm font-medium text-gray-700">
+                                        {selectedConversation.contact_name || selectedConversation.channel_contact_id}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="p-6 border-t border-gray-100 flex gap-3">
+                            <button
+                                onClick={() => setShowCreateTicketModal(false)}
+                                className="flex-1 px-4 py-2.5 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-xl transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleCreateTicket}
+                                disabled={!ticketForm.subject.trim() || creatingTicket}
+                                className="flex-1 px-4 py-2.5 text-sm font-medium text-white bg-gradient-to-r from-rose-500 to-pink-600 hover:opacity-90 rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                            >
+                                <Ticket className="h-4 w-4" />
+                                {creatingTicket ? "Creating..." : "Create Ticket"}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
