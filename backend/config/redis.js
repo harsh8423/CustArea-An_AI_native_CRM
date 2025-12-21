@@ -14,6 +14,7 @@ redis.on('connect', () => {
 // Stream names for message processing
 const STREAMS = {
     INCOMING: 'stream:incoming_messages',
+    WORKFLOW_TRIGGERS: 'stream:workflow_triggers',  // New: for workflow processing
     OUTGOING_WHATSAPP: 'stream:outgoing:whatsapp',
     OUTGOING_EMAIL: 'stream:outgoing:email',
 };
@@ -21,6 +22,7 @@ const STREAMS = {
 // Consumer groups for parallel processing
 const CONSUMER_GROUPS = {
     INCOMING_PROCESSORS: 'incoming_processors',
+    WORKFLOW_PROCESSORS: 'workflow_processors',  // New: for workflow service
     OUTGOING_WHATSAPP_GROUP: 'outgoing_whatsapp_group',
     OUTGOING_EMAIL_GROUP: 'outgoing_email_group',
 };
@@ -31,6 +33,7 @@ const CONSUMER_GROUPS = {
 async function initRedisStreams() {
     const groupsToCreate = [
         { stream: STREAMS.INCOMING, group: CONSUMER_GROUPS.INCOMING_PROCESSORS },
+        { stream: STREAMS.WORKFLOW_TRIGGERS, group: CONSUMER_GROUPS.WORKFLOW_PROCESSORS },
         { stream: STREAMS.OUTGOING_WHATSAPP, group: CONSUMER_GROUPS.OUTGOING_WHATSAPP_GROUP },
         { stream: STREAMS.OUTGOING_EMAIL, group: CONSUMER_GROUPS.OUTGOING_EMAIL_GROUP },
     ];
@@ -50,17 +53,34 @@ async function initRedisStreams() {
 }
 
 /**
- * Add message to incoming stream for processing
+ * Add message to appropriate stream based on workflow existence
+ * @param {string} messageId 
+ * @param {string} tenantId 
+ * @param {string} conversationId 
+ * @param {string} channel 
+ * @param {boolean} hasWorkflowTrigger - Whether tenant has active workflow for this trigger
+ * @param {object} triggerData - Full trigger context (sender, message, etc.)
  */
-async function queueIncomingMessage(messageId, tenantId, conversationId, channel) {
-    return redis.xadd(
-        STREAMS.INCOMING,
-        '*',
+async function queueIncomingMessage(messageId, tenantId, conversationId, channel, hasWorkflowTrigger = false, triggerData = null) {
+    // Route to workflow stream if tenant has active workflow trigger
+    const stream = hasWorkflowTrigger ? STREAMS.WORKFLOW_TRIGGERS : STREAMS.INCOMING;
+    
+    console.log(`[Redis] Routing message ${messageId} to ${stream} (hasWorkflow: ${hasWorkflowTrigger})`);
+    
+    // Build base fields
+    const fields = [
         'message_id', messageId,
         'tenant_id', tenantId,
         'conversation_id', conversationId,
         'channel', channel
-    );
+    ];
+    
+    // Add trigger data for workflow processing
+    if (hasWorkflowTrigger && triggerData) {
+        fields.push('trigger_data', JSON.stringify(triggerData));
+    }
+    
+    return redis.xadd(stream, '*', ...fields);
 }
 
 /**

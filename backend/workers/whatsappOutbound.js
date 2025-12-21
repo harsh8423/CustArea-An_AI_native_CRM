@@ -76,18 +76,49 @@ async function handleWhatsappJob(entryId, payload) {
         return;
     }
 
-    // 2. Fetch conversation to get recipient
-    const convResult = await pool.query(
-        `SELECT * FROM conversations WHERE id = $1`,
-        [message.conversation_id]
-    );
+    // 2. Check for custom recipient in metadata (used by workflow nodes)
+    let to = null;
+    const metadata = typeof message.metadata === 'string' ? JSON.parse(message.metadata) : message.metadata;
     
-    if (convResult.rows.length === 0) {
-        console.error(`Conversation ${message.conversation_id} not found for message ${message_id}`);
-        return;
+    console.log(`   DEBUG metadata:`, JSON.stringify(metadata, null, 2));
+    
+    if (metadata?.recipient) {
+        // Use configured recipient from workflow node
+        let recipient = metadata.recipient;
+        console.log(`   DEBUG recipient type: ${typeof recipient}, value:`, JSON.stringify(recipient));
+        
+        // Ensure we have a string, not an object
+        if (typeof recipient === 'object' && recipient !== null) {
+            // Try various possible field names - phone number might be nested
+            to = recipient.to || recipient.value || recipient.phone || recipient.number || recipient.recipient;
+            // If still nothing, check if it has a 'to' property that's an object
+            if (!to && recipient.to && typeof recipient.to === 'object') {
+                to = recipient.to.value || recipient.to.phone || recipient.to.number;
+            }
+            // Last resort - stringify and log for debugging
+            if (!to) {
+                console.log(`   DEBUG: Could not extract phone from recipient object:`, JSON.stringify(recipient));
+                to = JSON.stringify(recipient);
+            }
+        } else {
+            to = String(recipient);
+        }
+        console.log(`   Using workflow-configured recipient: ${to}`);
+    } else {
+        // Fallback to conversation's channel_contact_id
+        const convResult = await pool.query(
+            `SELECT * FROM conversations WHERE id = $1`,
+            [message.conversation_id]
+        );
+        
+        if (convResult.rows.length === 0) {
+            console.error(`Conversation ${message.conversation_id} not found for message ${message_id}`);
+            return;
+        }
+        const conversation = convResult.rows[0];
+        to = conversation.channel_contact_id;
+        console.log(`   Using conversation recipient: ${to}`);
     }
-    const conversation = convResult.rows[0];
-    const to = conversation.channel_contact_id; // This should be the phone number
 
     // 3. Send via WhatsApp Service
     try {

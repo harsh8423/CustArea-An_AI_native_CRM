@@ -36,7 +36,7 @@ export default function LandingPage() {
 
                     <h1 className="text-5xl md:text-7xl font-bold tracking-tight leading-tight">
                         Customer relationships, <br />
-                        <span className="text-transparent bg-clip-text bg-gradient-to-r from-white to-gray-500">reimagined for scale.</span>
+                        <span className="text-transparent bg-clip-text bg-gradient-to-r from-white to-gray-500">reimagined with AI.</span>
                     </h1>
 
                     <p className="text-xl text-gray-400 max-w-2xl mx-auto leading-relaxed">

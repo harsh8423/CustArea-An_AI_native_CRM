@@ -373,13 +373,45 @@ exports.receiveInboundMessage = async (req, res) => {
 
         await client.query('COMMIT');
 
-        // Queue for AI processing if enabled
-        if (conversation.ai_enabled && conversation.ai_mode !== 'off') {
-            try {
-                await queueIncomingMessage(message.id, tenantId, conversation.id, channel);
-            } catch (redisErr) {
-                console.error("Failed to queue message for AI:", redisErr);
+        // Queue for Workflow or AI processing
+        try {
+            const { hasTriggerWorkflow, getTriggerType } = require('../services/workflowCheckService');
+            
+            // Check if tenant has an active workflow with this channel's trigger
+            const triggerType = getTriggerType(channel, 'message');
+            const hasWorkflow = await hasTriggerWorkflow(tenantId, triggerType);
+            
+            if (hasWorkflow) {
+                // Build trigger data with channel-specific info
+                const triggerData = {
+                    trigger_type: triggerType,
+                    sender: channel === 'email' ? {
+                        email: channelContactId,
+                        name: channelMetadata.senderName || null
+                    } : channel === 'whatsapp' ? {
+                        phone: channelContactId,
+                        wa_number: channelContactId.replace('whatsapp:', '')
+                    } : {
+                        id: channelContactId
+                    },
+                    message: {
+                        id: message.id,
+                        body: contentText,
+                        subject: subject || null
+                    },
+                    contact_id: contact?.id || null,
+                    conversation_id: conversation.id,
+                    timestamp: new Date().toISOString()
+                };
+                
+                await queueIncomingMessage(message.id, tenantId, conversation.id, channel, true, triggerData);
+                console.log(`[${channel}] Queued message ${message.id} for WORKFLOW processing`);
+            } else if (conversation.ai_enabled && conversation.ai_mode !== 'off') {
+                await queueIncomingMessage(message.id, tenantId, conversation.id, channel, false);
+                console.log(`[${channel}] Queued message ${message.id} for AI processing`);
             }
+        } catch (redisErr) {
+            console.error("Failed to queue message:", redisErr);
         }
 
         res.status(201).json({ 

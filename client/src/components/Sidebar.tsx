@@ -59,10 +59,15 @@ const routes: Route[] = [
         badge: 4
     },
     {
-        label: "Leads",
+        label: "Sales",
         icon: Users,
         href: "/sales/contacts",
         color: "from-blue-500 to-cyan-500",
+        subItems: [
+            { label: "Contacts", href: "/sales/contacts", icon: Users },
+            { label: "Leads", href: "/sales/leads", icon: Users },
+            { label: "Lead Board", href: "/sales/lead-board", icon: Users },
+        ]
     },
     {
         label: "Campaign",
@@ -83,6 +88,7 @@ const routes: Route[] = [
         color: "from-rose-500 to-pink-600",
         subItems: [
             { label: "All Tickets", href: "/tickets", icon: List },
+            { label: "New", href: "/tickets?status=new", icon: AlertCircle, isStatusFilter: true },
             { label: "Open", href: "/tickets?status=open", icon: Clock, isStatusFilter: true },
             { label: "Pending", href: "/tickets?status=pending", icon: PauseCircle, isStatusFilter: true },
             { label: "On Hold", href: "/tickets?status=on_hold", icon: PauseCircle, isStatusFilter: true },
@@ -262,8 +268,8 @@ export function Sidebar() {
                 </div>
             </div>
 
-            {/* Sub-Sidebar Panel */}
-            {isCollapsed && activeItem && activeItem.label !== "Dashboard" && (
+            {/* Sub-Sidebar Panel - Only show if activeItem has subItems */}
+            {isCollapsed && activeItem && activeItem.label !== "Dashboard" && activeItem.subItems && activeItem.subItems.length > 0 && (
                 <div className="w-64 bg-[#eff0eb] h-full flex flex-col py-4 pr-3 animate-in slide-in-from-left-2 duration-200">
                     <div className="bg-white h-full rounded-2xl shadow-sm flex flex-col overflow-hidden">
                         <div className="p-5">

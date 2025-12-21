@@ -24,20 +24,12 @@ async function queueMessageForAI(req, res) {
             });
         }
 
-        // Check if AI should respond for this channel
-        const aiEnabled = await shouldAgentRespond(tenantId, channel);
-
-        if (!aiEnabled) {
-            console.log(`[AI Queue] AI not enabled for ${channel} (tenant: ${tenantId})`);
-            return res.json({ 
-                queued: false, 
-                reason: 'AI not enabled or outside schedule' 
-            });
-        }
-
-        // Verify the message exists
+        // Verify the message exists and get content
         const msgResult = await pool.query(
-            `SELECT id FROM messages WHERE id = $1 AND tenant_id = $2`,
+            `SELECT m.*, c.channel_contact_id 
+             FROM messages m 
+             JOIN conversations c ON c.id = m.conversation_id
+             WHERE m.id = $1 AND m.tenant_id = $2`,
             [messageId, tenantId]
         );
 
@@ -45,15 +37,66 @@ async function queueMessageForAI(req, res) {
             return res.status(404).json({ error: 'Message not found' });
         }
 
+        const message = msgResult.rows[0];
+
+        // Check for workflow trigger FIRST
+        const { hasTriggerWorkflow, getTriggerType } = require('../services/workflowCheckService');
+        const triggerType = getTriggerType(channel, 'message');
+        const hasWorkflow = await hasTriggerWorkflow(tenantId, triggerType);
+
+        if (hasWorkflow) {
+            // Build trigger data for workflow
+            const triggerData = {
+                trigger_type: triggerType,
+                sender: channel === 'email' ? {
+                    email: message.channel_contact_id,
+                } : channel === 'whatsapp' ? {
+                    phone: message.channel_contact_id,
+                    wa_number: (message.channel_contact_id || '').replace('whatsapp:', '')
+                } : {
+                    id: message.channel_contact_id
+                },
+                message: {
+                    id: message.id,
+                    body: message.content_text,
+                    subject: message.metadata?.subject || null
+                },
+                conversation_id: conversationId,
+                timestamp: new Date().toISOString()
+            };
+
+            await queueIncomingMessage(messageId, tenantId, conversationId, channel, true, triggerData);
+            console.log(`[AI Queue] Queued message ${messageId} for WORKFLOW processing (${channel})`);
+
+            return res.json({ 
+                queued: true, 
+                messageId,
+                channel,
+                destination: 'workflow'
+            });
+        }
+
+        // Otherwise check if AI should respond for this channel
+        const aiEnabled = await shouldAgentRespond(tenantId, channel);
+
+        if (!aiEnabled) {
+            console.log(`[AI Queue] No workflow or AI enabled for ${channel} (tenant: ${tenantId})`);
+            return res.json({ 
+                queued: false, 
+                reason: 'No workflow trigger and AI not enabled' 
+            });
+        }
+
         // Queue the message for AI processing
-        await queueIncomingMessage(messageId, tenantId, conversationId, channel);
+        await queueIncomingMessage(messageId, tenantId, conversationId, channel, false);
         
         console.log(`[AI Queue] Queued message ${messageId} for AI processing (${channel})`);
 
         res.json({ 
             queued: true, 
             messageId,
-            channel 
+            channel,
+            destination: 'ai'
         });
 
     } catch (error) {

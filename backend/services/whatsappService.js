@@ -135,14 +135,45 @@ async function handleIncomingWebhook(webhookData) {
         [message.id, From, MessageSid, JSON.stringify(webhookData)]
     );
 
-    // 6. Queue for AI processing (only if AI deployment is enabled and within schedule)
+    // 6. Queue for AI processing or Workflow processing
     try {
-        const aiEnabled = await shouldAgentRespond(tenantId, 'whatsapp');
-        if (aiEnabled) {
-            await queueIncomingMessage(message.id, tenantId, conversation.id, 'whatsapp');
-            console.log(`[WhatsApp] Queued message ${message.id} for AI processing`);
+        const { hasTriggerWorkflow, getTriggerType } = require('./workflowCheckService');
+        
+        // Check if tenant has an active workflow with WhatsApp trigger
+        const triggerType = getTriggerType('whatsapp', 'message');
+        const hasWorkflow = await hasTriggerWorkflow(tenantId, triggerType);
+        
+        if (hasWorkflow) {
+            // Build trigger data with all relevant WhatsApp message info
+            const triggerData = {
+                trigger_type: 'whatsapp_message',
+                sender: {
+                    phone: From,
+                    wa_number: From.replace('whatsapp:', ''),
+                    name: contact?.name || null
+                },
+                message: {
+                    id: message.id,
+                    body: Body,
+                    sid: MessageSid
+                },
+                contact_id: contact?.id || null,
+                conversation_id: conversation.id,
+                timestamp: new Date().toISOString()
+            };
+            
+            // Route to workflow stream for processing
+            await queueIncomingMessage(message.id, tenantId, conversation.id, 'whatsapp', true, triggerData);
+            console.log(`[WhatsApp] Queued message ${message.id} for WORKFLOW processing with trigger data`);
         } else {
-            console.log(`[WhatsApp] AI not enabled for tenant ${tenantId}, skipping AI queue`);
+            // Check if AI is enabled
+            const aiEnabled = await shouldAgentRespond(tenantId, 'whatsapp');
+            if (aiEnabled) {
+                await queueIncomingMessage(message.id, tenantId, conversation.id, 'whatsapp', false);
+                console.log(`[WhatsApp] Queued message ${message.id} for AI processing`);
+            } else {
+                console.log(`[WhatsApp] No workflow or AI enabled for tenant ${tenantId}, skipping queue`);
+            }
         }
     } catch (err) {
         console.error('Failed to queue WhatsApp message:', err);
