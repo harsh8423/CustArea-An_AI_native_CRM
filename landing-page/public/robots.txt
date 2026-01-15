@@ -1,0 +1,15 @@
+# CustArea Robots.txt
+# https://custarea.com
+
+User-agent: *
+Allow: /
+
+# Sitemaps
+Sitemap: https://custarea.com/sitemap.xml
+
+# Crawl-delay for polite crawling
+Crawl-delay: 1
+
+# Block admin/private paths (add as needed)
+# Disallow: /admin/
+# Disallow: /api/

@@ -1,0 +1,9 @@
+export { default as Header } from './Header';
+export { default as Hero } from './Hero';
+export { default as Features } from './Features';
+export { default as HowItWorks } from './HowItWorks';
+export { default as AIShowcase } from './AIShowcase';
+export { default as DemoSection } from './DemoSection';
+export { default as ContactForm } from './ContactForm';
+export { default as FAQ } from './FAQ';
+export { default as Footer } from './Footer';
