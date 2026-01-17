@@ -2,43 +2,43 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { STEPS } from '../constants';
 import { Check, MessageSquare, Bot, Inbox } from 'lucide-react';
-import { motion, useScroll, useTransform, useSpring, AnimatePresence } from 'framer-motion';
+import { motion, useScroll, useTransform, AnimatePresence } from 'framer-motion';
 
 const HowItWorks: React.FC = () => {
     const containerRef = useRef<HTMLDivElement>(null);
     const [activeStep, setActiveStep] = useState(0);
 
+
     const { scrollYProgress } = useScroll({
         target: containerRef,
-        offset: ["start end", "end start"]
+        offset: ["start start", "end end"]
     });
 
-    // Map scroll progress to step with better control
-    const stepProgress = useTransform(scrollYProgress, [0, 1], [0, STEPS.length]);
-
-    // Add smooth spring physics for fluid transitions
-    const smoothStepProgress = useSpring(stepProgress, {
-        stiffness: 100,
-        damping: 40,
-        restDelta: 0.0001,
-        mass: 0.5
-    });
+    // Direct step mapping for smooth, instant transitions (no spring lag)
+    // Distribute steps evenly: 0-20% = step 0, 20-40% = step 1, 40-60% = step 2, 60-100% = step 3
+    const stepProgress = useTransform(
+        scrollYProgress,
+        [0, 0.2, 0.4, 0.6, 0.8, 1.0],
+        [0, 1, 2, 3, 3, 3]  // Hold step 3 for the final 20% to ensure it's fully shown
+    );
 
     useEffect(() => {
-        const unsubscribe = smoothStepProgress.on("change", (latest) => {
-            // Only update step when section is in view
-            if (latest >= 0 && latest <= STEPS.length) {
-                const newStep = Math.min(STEPS.length - 1, Math.max(0, Math.floor(latest)));
-                setActiveStep(newStep);
+        const unsubscribe = scrollYProgress.on("change", (latest: number) => {
+            if (latest >= 0 && latest <= 1) {
+                // Get current step value directly - no spring means instant, smooth updates
+                const currentStepValue = stepProgress.get();
+                const step = Math.min(STEPS.length - 1, Math.max(0, Math.round(currentStepValue)));
+                setActiveStep(step);
             }
         });
         return () => unsubscribe();
-    }, [smoothStepProgress]);
+    }, [scrollYProgress, stepProgress]);
+
 
     return (
         <div className="relative" id="how-it-works">
-            {/* Scroll container with snap points for each step */}
-            <div ref={containerRef} className="relative bg-white" style={{ height: `${STEPS.length * 75}vh` }}>
+            {/* Scroll container - height ensures step 4 is fully shown */}
+            <div ref={containerRef} className="relative bg-white" style={{ height: `400vh` }}>
                 {/* Sticky content */}
                 <div className="sticky top-0 h-screen w-full overflow-hidden flex items-center justify-center py-12 md:py-24">
                     <div className="w-full max-w-5xl mx-auto px-6 lg:px-8 flex flex-col md:flex-row gap-4 md:gap-8 items-center h-full justify-center">

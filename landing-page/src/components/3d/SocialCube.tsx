@@ -16,37 +16,46 @@ function Loader() {
 // Main exported 3D Social Cube component
 export default function SocialCube() {
     const [mounted, setMounted] = useState(false);
+    const [isMobile, setIsMobile] = useState(false);
 
-    // Only render 3D on client side
+    // Detect mobile viewport and only render 3D on client side
     useEffect(() => {
         setMounted(true);
+
+        // Check if viewport is mobile sized
+        const checkMobile = () => {
+            setIsMobile(window.innerWidth < 1024); // lg breakpoint
+        };
+
+        checkMobile();
+        window.addEventListener('resize', checkMobile);
+
+        return () => window.removeEventListener('resize', checkMobile);
     }, []);
 
     if (!mounted) {
         return (
-            <div style={{
-                width: '100%',
-                height: '500px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center'
-            }}>
+            <div className="w-full h-[280px] sm:h-[350px] lg:h-[500px] flex items-center justify-center">
                 <Loader />
             </div>
         );
     }
 
+    // Responsive camera settings
+    const cameraSettings = isMobile ? {
+        position: [8, 6, 8] as [number, number, number], // Further back on mobile
+        fov: 50, // Wider FOV on mobile to fit cube better
+    } : {
+        position: [7, 5, 7] as [number, number, number],
+        fov: 45,
+    };
+
     return (
-        <div style={{
-            width: '100%',
-            height: '500px',
-            position: 'relative'
-        }}>
+        <div className="w-full h-[280px] sm:h-[350px] lg:h-[500px] relative">
             <Suspense fallback={<Loader />}>
                 <Canvas
                     camera={{
-                        position: [7, 5, 7],
-                        fov: 45,
+                        ...cameraSettings,
                         near: 0.1,
                         far: 1000
                     }}
@@ -67,7 +76,6 @@ export default function SocialCube() {
                     <Scene />
                 </Canvas>
             </Suspense>
-
 
         </div>
     );
