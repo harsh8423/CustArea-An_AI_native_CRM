@@ -11,10 +11,10 @@ export default function AIShowcase() {
 
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
                 <div className="text-center max-w-3xl mx-auto mb-16">
-                    <span className="badge-gold mb-3">The Brain</span>
+                    <span className="badge mb-3">The Brain</span>
                     <h2 className="section-heading mb-6">
                         More than just a chatbot. <br />
-                        <span className="text-gradient-gold">It understands.</span>
+                        <span className="text-gradient">It understands.</span>
                     </h2>
                     <p className="text-lg text-slate-600 leading-relaxed">
                         CustArea's AI engine doesn't just match keywords. It understands context,
@@ -71,7 +71,7 @@ export default function AIShowcase() {
                     >
                         <div className="absolute inset-0 bg-gradient-to-br from-white to-slate-50" />
                         <div className="relative z-10">
-                            <div className="w-12 h-12 bg-amber-100 text-amber-600 rounded-2xl flex items-center justify-center mb-6">
+                            <div className="w-12 h-12 bg-blue-100 text-blue-600 rounded-2xl flex items-center justify-center mb-6">
                                 <Zap className="w-6 h-6" />
                             </div>
                             <h3 className="text-xl font-bold text-slate-900 mb-2">Sentiment Detection</h3>
@@ -87,7 +87,7 @@ export default function AIShowcase() {
                                         initial={{ width: "0%" }}
                                         whileInView={{ width: "70%" }}
                                         transition={{ duration: 1.5, repeat: Infinity, repeatType: "reverse" }}
-                                        className="h-full bg-gradient-to-r from-red-400 to-amber-400"
+                                        className="h-full bg-gradient-to-r from-red-400 to-blue-400"
                                     />
                                 </div>
                                 <span className="text-2xl">😊</span>

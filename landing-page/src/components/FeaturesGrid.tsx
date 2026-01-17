@@ -3,16 +3,16 @@ import { MessageCircle, Workflow, Sparkles, Megaphone, ArrowRight, Bot, Mail, Se
 
 const FeaturesGrid: React.FC = () => {
     return (
-        <section className="bg-white py-24" id="platform">
-            <div className="max-w-6xl mx-auto px-6">
-                <div className="text-center max-w-3xl mx-auto mb-16">
-                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-100 text-slate-600 text-sm font-medium mb-4">
+        <section className="bg-white py-24 relative overflow-hidden" id="platform">
+            <div className="max-w-6xl mx-auto px-6 relative z-10">
+                <div className="text-center max-w-3xl mx-auto mb-12 sm:mb-16">
+                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-100 text-slate-600 text-xs sm:text-sm font-medium mb-4">
                         Powering your growth
                     </div>
-                    <h2 className="text-4xl md:text-5xl font-bold mb-6 text-slate-900 tracking-tight">
+                    <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-4 sm:mb-6 text-slate-900 tracking-tight">
                         All the tools you need
                     </h2>
-                    <p className="text-lg text-slate-500">
+                    <p className="text-base sm:text-lg text-slate-500">
                         Everything your team needs to support customers and close deals — in one unified platform.
                     </p>
                 </div>
@@ -20,18 +20,18 @@ const FeaturesGrid: React.FC = () => {
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
 
                     {/* Card 1: Customer Support (Wide) */}
-                    <div className="lg:col-span-12 bg-slate-50 border border-slate-100 rounded-[2.5rem] p-8 md:p-12 flex flex-col md:flex-row items-center gap-12 overflow-hidden hover:shadow-xl transition-all duration-300 group">
-                        <div className="md:w-1/2 space-y-6">
-                            <div className="inline-flex items-center gap-2 text-indigo-600 font-semibold bg-indigo-50 px-3 py-1 rounded-full text-sm">
-                                <MessageCircle className="w-4 h-4" /> Customer Support
+                    <div className="lg:col-span-12 bg-slate-50 border border-slate-100 rounded-[2rem] sm:rounded-[2.5rem] p-4 sm:p-6 md:p-8 lg:p-12 flex flex-col md:flex-row items-center gap-8 sm:gap-10 md:gap-12 overflow-hidden hover:shadow-xl transition-all duration-300 group">
+                        <div className="md:w-1/2 space-y-4 sm:space-y-6">
+                            <div className="inline-flex items-center gap-2 text-indigo-600 font-semibold bg-indigo-50 px-3 py-1 rounded-full text-xs sm:text-sm">
+                                <MessageCircle className="w-3 h-3 sm:w-4 sm:h-4" /> Customer Support
                             </div>
-                            <h3 className="text-3xl font-bold text-slate-900 leading-tight">
+                            <h3 className="text-2xl sm:text-3xl font-bold text-slate-900 leading-tight">
                                 Support leads and customers instantly — without being online 24/7
                             </h3>
-                            <p className="text-slate-500 leading-relaxed text-base">
+                            <p className="text-slate-500 leading-relaxed text-sm sm:text-base">
                                 Add CustArea to your business channels and stay responsive at all times. From WhatsApp and website chat to email and calls, CustArea helps you handle customer conversations instantly, qualify intent, and resolve issues — even when your team is offline or overloaded.
                             </p>
-                            <button className="text-indigo-600 font-semibold flex items-center gap-2 hover:gap-3 transition-all text-sm">
+                            <button className="text-indigo-600 font-semibold flex items-center gap-2 hover:gap-3 transition-all text-xs sm:text-sm min-h-[44px]">
                                 Learn more <ArrowRight className="w-4 h-4" />
                             </button>
                         </div>
@@ -75,21 +75,21 @@ const FeaturesGrid: React.FC = () => {
                     </div>
 
                     {/* Card 2: Workflow (Tall Left) */}
-                    <div className="lg:col-span-7 bg-slate-50 border border-slate-100 rounded-[2.5rem] p-8 md:p-12 flex flex-col justify-between overflow-hidden hover:shadow-xl transition-all duration-300 group">
-                        <div className="space-y-6 max-w-xl">
-                            <div className="inline-flex items-center gap-2 text-blue-600 font-semibold bg-blue-50 px-3 py-1 rounded-full text-sm">
-                                <Workflow className="w-4 h-4" /> Workflow & Automation
+                    <div className="lg:col-span-7 bg-slate-50 border border-slate-100 rounded-[2rem] sm:rounded-[2.5rem] p-4 sm:p-6 md:p-8 lg:p-12 flex flex-col justify-between overflow-hidden hover:shadow-xl transition-all duration-300 group">
+                        <div className="space-y-4 sm:space-y-6 max-w-xl">
+                            <div className="inline-flex items-center gap-2 text-blue-600 font-semibold bg-blue-50 px-3 py-1 rounded-full text-xs sm:text-sm">
+                                <Workflow className="w-3 h-3 sm:w-4 sm:h-4" /> Workflow & Automation
                             </div>
-                            <h3 className="text-2xl font-bold text-slate-900">
+                            <h3 className="text-xl sm:text-2xl font-bold text-slate-900">
                                 Automate your sales and support operations with flexible workflows
                             </h3>
-                            <p className="text-slate-500 leading-relaxed text-sm md:text-base">
-                                Every business works differently. CustArea’s workflow engine lets you design custom logic for how conversations are handled — from routing messages and creating leads or tickets, assigning owners, and executing complex logic.
+                            <p className="text-slate-500 leading-relaxed text-xs sm:text-sm md:text-base">
+                                Every business works differently. CustArea's workflow engine lets you design custom logic for how conversations are handled — from routing messages and creating leads or tickets, assigning owners, and executing complex logic.
                             </p>
-                            <p className="text-slate-500 leading-relaxed text-sm md:text-base border-l-2 border-blue-200 pl-4 italic">
+                            <p className="text-slate-500 leading-relaxed text-xs sm:text-sm md:text-base border-l-2 border-blue-200 pl-3 sm:pl-4 italic">
                                 Combine rules with AI decisions to automate complex operations without losing control.
                             </p>
-                            <button className="bg-blue-600 text-white px-5 py-2.5 rounded-full text-sm font-semibold hover:bg-blue-700 transition-colors inline-flex items-center gap-2 shadow-lg shadow-blue-200">
+                            <button className="bg-blue-600 text-white px-4 sm:px-5 py-2 sm:py-2.5 rounded-full text-xs sm:text-sm font-semibold hover:bg-blue-700 transition-colors inline-flex items-center gap-2 shadow-lg shadow-blue-200 min-h-[44px]">
                                 Explore Workflows
                             </button>
                         </div>
@@ -183,14 +183,14 @@ const FeaturesGrid: React.FC = () => {
                         </div>
 
                         {/* Card 4: Campaigns */}
-                        <div className="bg-slate-50 border border-slate-100 rounded-[2.5rem] p-8 hover:shadow-xl transition-all duration-300 h-full flex flex-col">
-                            <div className="mb-6 inline-flex items-center gap-2 text-green-600 font-semibold bg-green-50 px-3 py-1 rounded-full text-sm w-fit">
-                                <Megaphone className="w-4 h-4" /> Campaigns
+                        <div className="bg-slate-50 border border-slate-100 rounded-[2rem] sm:rounded-[2.5rem] p-4 sm:p-6 md:p-8 hover:shadow-xl transition-all duration-300 h-full flex flex-col">
+                            <div className="mb-4 sm:mb-6 inline-flex items-center gap-2 text-green-600 font-semibold bg-green-50 px-3 py-1 rounded-full text-xs sm:text-sm w-fit">
+                                <Megaphone className="w-3 h-3 sm:w-4 sm:h-4" /> Campaigns
                             </div>
-                            <h3 className="text-xl font-bold text-slate-900 mb-3">
+                            <h3 className="text-lg sm:text-xl font-bold text-slate-900 mb-2 sm:mb-3">
                                 Run WhatsApp and email campaigns
                             </h3>
-                            <p className="text-slate-500 text-sm leading-relaxed mb-8">
+                            <p className="text-slate-500 text-xs sm:text-sm leading-relaxed mb-6 sm:mb-8">
                                 CustArea helps you run campaigns where AI manages replies and follows up automatically.
                             </p>
                             {/* Mock Stats */}

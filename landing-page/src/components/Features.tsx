@@ -81,15 +81,20 @@ export default function Features() {
         <section className="relative" id="features">
 
             {/* Header Section - Normal Scroll */}
-            <div className="py-20 md:py-32 bg-white text-center px-4 sm:px-6 lg:px-8">
-                <div className="max-w-3xl mx-auto">
-                    <span className="inline-block py-1 px-3 rounded-full bg-blue-50 text-blue-600 font-bold text-[10px] md:text-xs tracking-widest uppercase mb-3 md:mb-4 border border-blue-100">
+            <div className="py-16 sm:py-20 md:py-32 bg-white text-center px-4 sm:px-6 lg:px-8 relative overflow-hidden">
+                {/* Glowing backdrop */}
+                <div className="absolute top-0 right-1/4 w-[600px] h-[600px] bg-gradient-to-br from-[#1E4A8D]/10 to-[#2563eb]/5 rounded-full blur-3xl animate-float" />
+                <div className="absolute bottom-0 left-1/4 w-[500px] h-[500px] bg-gradient-to-br from-[#D4AF37]/15 to-[#C9A227]/10 rounded-full blur-3xl animate-pulse-glow opacity-60" />
+                <div className="absolute top-1/3 right-1/3 w-[550px] h-[550px] bg-gradient-to-br from-[#D4AF37]/12 to-transparent rounded-full blur-3xl animate-float-delayed opacity-55" />
+
+                <div className="max-w-3xl mx-auto relative z-10">
+                    <span className="inline-block py-1 px-3 rounded-full bg-blue-50 text-blue-600 font-bold text-[10px] sm:text-xs tracking-widest uppercase mb-3 md:mb-4 border border-blue-100">
                         Powerful Features
                     </span>
-                    <h2 className="text-4xl md:text-5xl lg:text-6xl font-['Outfit'] font-bold mb-6 leading-tight text-slate-900">
+                    <h2 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-['Outfit'] font-bold mb-4 sm:mb-6 leading-tight text-slate-900">
                         Everything to <span className="text-blue-600">win customers</span>
                     </h2>
-                    <p className="text-lg md:text-xl text-slate-600 font-['Inter'] leading-relaxed max-w-2xl mx-auto">
+                    <p className="text-sm sm:text-base md:text-lg lg:text-xl text-slate-600 font-['Inter'] leading-relaxed max-w-2xl mx-auto">
                         A complete platform combining AI intelligence, omni-channel communication,
                         and powerful automation tools.
                     </p>
@@ -107,15 +112,15 @@ export default function Features() {
                             zIndex: index + 1,
                         }}
                     >
-                        <div className="max-w-6xl mx-auto px-6 sm:px-8 lg:px-12 w-full py-12 md:py-16">
+                        <div className="max-w-6xl mx-auto px-4 sm:px-6 md:px-8 lg:px-12 w-full py-8 sm:py-12 md:py-16">
                             {/* Question Header - Full Width */}
-                            <div className="mb-6 lg:mb-8 text-center lg:text-left">
+                            <div className="mb-4 sm:mb-6 lg:mb-8 text-center lg:text-left">
                                 <div className="mb-2">
-                                    <span className="text-[10px] md:text-xs font-bold tracking-widest uppercase text-blue-600">
+                                    <span className="text-[10px] sm:text-xs font-bold tracking-widest uppercase text-blue-600">
                                         {feature.title}
                                     </span>
                                 </div>
-                                <h3 className="text-2xl md:text-4xl lg:text-5xl font-['Outfit'] font-bold text-slate-900 leading-tight">
+                                <h3 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl xl:text-5xl font-['Outfit'] font-bold text-slate-900 leading-tight">
                                     {feature.question}
                                 </h3>
                             </div>
@@ -125,10 +130,10 @@ export default function Features() {
 
                                 {/* Content Side */}
                                 <div className="order-2 lg:order-1">
-                                    <p className="text-lg md:text-xl font-['Inter'] font-medium text-slate-800 mb-3 md:mb-4 leading-relaxed">
+                                    <p className="text-base sm:text-lg md:text-xl font-['Inter'] font-medium text-slate-800 mb-3 md:mb-4 leading-relaxed">
                                         {feature.content.intro}
                                     </p>
-                                    <p className="text-sm md:text-base text-slate-600 leading-relaxed max-w-xl">
+                                    <p className="text-xs sm:text-sm md:text-base text-slate-600 leading-relaxed max-w-xl">
                                         {feature.content.description}
                                     </p>
                                 </div>

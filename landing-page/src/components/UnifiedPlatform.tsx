@@ -34,10 +34,7 @@ export default function UnifiedPlatform() {
         <section ref={containerRef} className="relative h-[250vh] bg-white z-20">
             <div className="sticky top-0 h-screen flex flex-col items-center justify-center overflow-hidden">
 
-                {/* Background Gradients */}
-                <div className="absolute inset-0 pointer-events-none">
-                    <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_50%_50%,rgba(59,130,246,0.05),transparent_70%)]" />
-                </div>
+
 
                 <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center w-full h-full flex flex-col items-center justify-center">
 
@@ -58,7 +55,7 @@ export default function UnifiedPlatform() {
                             </motion.h2>
                             <motion.h2
                                 style={{ opacity: h3Opacity, y: h3Y }}
-                                className="text-5xl md:text-7xl lg:text-8xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-amber-500 tracking-tight pb-2"
+                                className="text-5xl md:text-7xl lg:text-8xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-blue-900 tracking-tight pb-2"
                             >
                                 One decision engine.
                             </motion.h2>

@@ -41,12 +41,12 @@ export default function ContactAndDemo() {
     };
 
     return (
-        <section className="py-16 lg:py-24 bg-gray-50" id="contact">
-            <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+        <section className="py-16 lg:py-24 bg-gray-50 relative overflow-hidden" id="contact">
+            <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
                 <div className="text-center mb-12">
-                    <span className="badge-gold mb-3">Get In Touch</span>
+                    <span className="badge mb-3">Get In Touch</span>
                     <h2 className="section-heading">
-                        Ready to <span className="text-gradient-gold">transform your workflow?</span>
+                        Ready to <span className="text-gradient">transform your workflow?</span>
                     </h2>
                 </div>
 
@@ -67,35 +67,35 @@ export default function ContactAndDemo() {
                                 )}
 
                                 <form ref={formRef} onSubmit={handleSubmit} className="space-y-4">
-                                    <div className="grid grid-cols-2 gap-4">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                         <div>
                                             <label className="text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1 block">First Name *</label>
-                                            <input type="text" name="first_name" className="form-input py-2 text-sm" placeholder="John" required />
+                                            <input type="text" name="first_name" className="form-input text-sm sm:text-base" placeholder="John" required />
                                         </div>
                                         <div>
                                             <label className="text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1 block">Last Name *</label>
-                                            <input type="text" name="last_name" className="form-input py-2 text-sm" placeholder="Doe" required />
+                                            <input type="text" name="last_name" className="form-input text-sm sm:text-base" placeholder="Doe" required />
                                         </div>
                                     </div>
 
                                     <div>
                                         <label className="text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1 block">Email *</label>
-                                        <input type="email" name="email" className="form-input py-2 text-sm" placeholder="john@company.com" required />
+                                        <input type="email" name="email" className="form-input text-sm sm:text-base" placeholder="john@company.com" required />
                                     </div>
 
                                     <div>
                                         <label className="text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1 block">Company</label>
-                                        <input type="text" name="company" className="form-input py-2 text-sm" placeholder="Your Company" />
+                                        <input type="text" name="company" className="form-input text-sm sm:text-base" placeholder="Your Company" />
                                     </div>
 
                                     <div>
                                         <label className="text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1 block">Message *</label>
-                                        <textarea name="message" className="form-input py-2 text-sm min-h-[100px] resize-none" placeholder="How can we help?" required />
+                                        <textarea name="message" className="form-input text-sm sm:text-base min-h-[100px] resize-none" placeholder="How can we help?" required />
                                     </div>
 
                                     <button
                                         type="submit"
-                                        className="btn-primary w-full justify-center py-2.5 text-base"
+                                        className="btn-primary w-full justify-center text-sm sm:text-base"
                                         disabled={isSubmitting}
                                     >
                                         {isSubmitting ? 'Sending...' : 'Send Message'}
