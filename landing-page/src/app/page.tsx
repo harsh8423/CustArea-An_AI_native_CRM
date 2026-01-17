@@ -1,13 +1,14 @@
 import {
   Header,
   Hero,
+  UnifiedPlatform,
   Features,
   HowItWorks,
   AIShowcase,
-  DemoSection,
-  ContactForm,
+  ContactAndDemo,
   FAQ,
-  Footer
+  Footer,
+  FeaturesGrid
 } from '@/components';
 
 export default function Home() {
@@ -15,11 +16,12 @@ export default function Home() {
     <main>
       <Header />
       <Hero />
+      <UnifiedPlatform />
       <Features />
       <HowItWorks />
       <AIShowcase />
-      <DemoSection />
-      <ContactForm />
+      <FeaturesGrid />
+      <ContactAndDemo />
       <FAQ />
       <Footer />
     </main>

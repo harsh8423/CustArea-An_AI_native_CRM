@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 
 export default function FAQ() {
     const [openIndex, setOpenIndex] = useState<number | null>(0);
@@ -47,33 +48,43 @@ export default function FAQ() {
                 </div>
 
                 {/* FAQ List */}
-                <div className="space-y-4">
+                <div className="space-y-3">
                     {faqs.map((faq, index) => (
                         <div
                             key={index}
-                            className={`bg-white rounded-2xl border transition-all duration-300 ${openIndex === index
-                                    ? 'border-amber-300 shadow-lg shadow-amber-100/50'
-                                    : 'border-gray-200 hover:border-gray-300'
+                            className={`bg-white rounded-xl border transition-all duration-300 ${openIndex === index
+                                ? 'border-amber-300 shadow-lg shadow-amber-100/50'
+                                : 'border-gray-200 hover:border-gray-300'
                                 }`}
                         >
                             <button
                                 onClick={() => setOpenIndex(openIndex === index ? null : index)}
-                                className="w-full p-6 text-left flex items-center justify-between gap-4"
+                                className="w-full py-4 px-5 text-left flex items-center justify-between gap-4"
                             >
-                                <span className="text-lg font-semibold text-gray-900">{faq.question}</span>
-                                <span className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 transition-all duration-300 ${openIndex === index
-                                        ? 'bg-amber-500 text-white rotate-45'
-                                        : 'bg-gray-100 text-gray-600'
+                                <span className="text-base md:text-lg font-semibold text-gray-900">{faq.question}</span>
+                                <span className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 transition-all duration-300 ${openIndex === index
+                                    ? 'bg-amber-500 text-white rotate-45'
+                                    : 'bg-gray-100 text-gray-600'
                                     }`}>
-                                    +
+                                    <span className="text-sm leading-none mb-0.5">+</span>
                                 </span>
                             </button>
 
-                            {openIndex === index && (
-                                <div className="px-6 pb-6 text-gray-600 leading-relaxed">
-                                    {faq.answer}
-                                </div>
-                            )}
+                            <AnimatePresence>
+                                {openIndex === index && (
+                                    <motion.div
+                                        initial={{ height: 0, opacity: 0 }}
+                                        animate={{ height: 'auto', opacity: 1 }}
+                                        exit={{ height: 0, opacity: 0 }}
+                                        transition={{ duration: 0.3, ease: "easeInOut" }}
+                                        className="overflow-hidden"
+                                    >
+                                        <div className="px-5 pb-5 text-sm md:text-base text-gray-600 leading-relaxed">
+                                            {faq.answer}
+                                        </div>
+                                    </motion.div>
+                                )}
+                            </AnimatePresence>
                         </div>
                     ))}
                 </div>
