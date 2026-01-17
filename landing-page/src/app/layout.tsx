@@ -7,10 +7,10 @@ const siteName = 'CustArea';
 export const metadata: Metadata = {
   // Basic SEO
   title: {
-    default: 'CustArea - AI-Native Customer Relationship Platform',
+    default: 'CustArea - On-demand AI for Sales and Customer Support',
     template: '%s | CustArea',
   },
-  description: 'Unite WhatsApp, Email, Phone & Chat in one intelligent platform. Automate workflows visually. Deploy AI agents that truly understand your business. Start free trial today.',
+  description: 'Step in when needed, stay invisible when not. Active when your team is offline or overloaded. Specially designed for small businesses.',
   keywords: [
     'CRM software',
     'AI CRM',
@@ -41,14 +41,14 @@ export const metadata: Metadata = {
     locale: 'en_US',
     url: siteUrl,
     siteName: siteName,
-    title: 'CustArea - AI-Native Customer Relationship Platform',
-    description: 'Unite WhatsApp, Email, Phone & Chat in one intelligent CRM. Automate workflows visually. Deploy AI agents that truly understand your business.',
+    title: 'CustArea - On-demand AI for Sales and Customer Support',
+    description: 'Step in when needed, stay invisible when not. Active when your team is offline or overloaded.',
     images: [
       {
-        url: '/og-image.png',
+        url: '/logo.png',
         width: 1200,
-        height: 630,
-        alt: 'CustArea - AI-Powered CRM Platform',
+        height: 1200,
+        alt: 'CustArea - On-demand AI for Sales and Customer Support',
       },
     ],
   },
@@ -56,9 +56,9 @@ export const metadata: Metadata = {
   // Twitter Card
   twitter: {
     card: 'summary_large_image',
-    title: 'CustArea - AI-Native Customer Relationship Platform',
-    description: 'Unite all customer conversations in one AI-powered platform. WhatsApp, Email, Phone & Chat unified.',
-    images: ['/og-image.png'],
+    title: 'CustArea - On-demand AI for Sales and Customer Support',
+    description: 'Step in when needed, stay invisible when not. Active when your team is offline or overloaded.',
+    images: ['/logo.png'],
     creator: '@custarea',
     site: '@custarea',
   },
