@@ -55,7 +55,7 @@ export default function Hero() {
                         </div> */}
 
                         {/* Enhanced Headline with Gradient Animation */}
-                        <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl xl:text-6xl font-extrabold tracking-tight leading-[1.1] mb-4 sm:mb-5 animate-in fade-in slide-in-from-bottom-6 duration-700 delay-150">
+                        <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl xl:text-6xl font-extrabold tracking-tight leading-[1.1] mb-4 sm:mb-5">
                             <span className="text-slate-900">On-demand AI for</span>
                             <br />
                             <span className="relative inline-block mt-1 sm:mt-2">
@@ -68,7 +68,7 @@ export default function Hero() {
                         </h1>
 
                         {/* Enhanced Subheadline in Glassmorphic Card */}
-                        <div className="mb-5 sm:mb-6 p-3 sm:p-4 rounded-xl bg-white/60 backdrop-blur-xl border border-white/60 shadow-xl shadow-blue-500/5 max-w-xl animate-in fade-in slide-in-from-bottom-8 duration-700 delay-300">
+                        <div className="mb-5 sm:mb-6 p-3 sm:p-4 rounded-xl bg-white/60 backdrop-blur-xl border border-white/60 shadow-xl shadow-blue-500/5 max-w-xl">
                             <p className="text-sm sm:text-base lg:text-lg text-slate-700 leading-relaxed font-medium">
                                 Step in when needed, stay invisible when not.
                                 <br />
@@ -77,7 +77,7 @@ export default function Hero() {
                         </div>
 
                         {/* Enhanced CTA with Glow Effect */}
-                        <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto animate-in fade-in slide-in-from-bottom-10 duration-700 delay-500">
+                        <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
                             <a
                                 href="#demo"
                                 onClick={handleScheduleClick}
