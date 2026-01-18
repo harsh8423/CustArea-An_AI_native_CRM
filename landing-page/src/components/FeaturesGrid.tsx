@@ -31,9 +31,9 @@ const FeaturesGrid: React.FC = () => {
                             <p className="text-slate-500 leading-relaxed text-sm sm:text-base">
                                 Add CustArea to your business channels and stay responsive at all times. From WhatsApp and website chat to email and calls, CustArea helps you handle customer conversations instantly, qualify intent, and resolve issues — even when your team is offline or overloaded.
                             </p>
-                            <button className="text-indigo-600 font-semibold flex items-center gap-2 hover:gap-3 transition-all text-xs sm:text-sm min-h-[44px]">
+                            {/* <button className="text-indigo-600 font-semibold flex items-center gap-2 hover:gap-3 transition-all text-xs sm:text-sm min-h-[44px]">
                                 Learn more <ArrowRight className="w-4 h-4" />
-                            </button>
+                            </button> */}
                         </div>
                         <div className="md:w-1/2 w-full relative perspective-1000">
                             {/* Mock Chat UI */}

@@ -101,7 +101,7 @@ export default function AIShowcase() {
                         whileInView={{ opacity: 1, y: 0 }}
                         viewport={{ once: true }}
                         transition={{ delay: 0.2 }}
-                        className="bg-slate-900 text-white rounded-3xl p-8 shadow-xl relative overflow-hidden"
+                        className="bg-gradient-to-br from-[#1E4A8D] to-[#2563eb] text-white rounded-3xl p-8 shadow-xl relative overflow-hidden"
                     >
                         {/* Matrix effect background */}
                         <div className="absolute inset-0 opacity-20 bg-[linear-gradient(to_right,#4f4f4f2e_1px,transparent_1px),linear-gradient(to_bottom,#4f4f4f2e_1px,transparent_1px)] bg-[size:14px_24px]" />
@@ -110,7 +110,7 @@ export default function AIShowcase() {
                             <div className="w-12 h-12 bg-white/10 rounded-2xl flex items-center justify-center mb-6 backdrop-blur-sm">
                                 <FileText className="w-6 h-6 text-blue-400" />
                             </div>
-                            <h3 className="text-xl font-bold mb-2">Knowledge RAG</h3>
+                            <h3 className="text-xl font-bold mb-2">Knowledge Base</h3>
                             <p className="text-slate-400 text-sm mb-6">
                                 Instantly parses your PDFs, Docs, and URLs to answer accurately.
                             </p>

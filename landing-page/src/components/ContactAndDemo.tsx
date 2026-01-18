@@ -116,7 +116,7 @@ export default function ContactAndDemo() {
                     {/* Right: Demo & Info */}
                     <div className="space-y-6">
                         {/* Demo Card */}
-                        <div className="bg-gradient-to-br from-slate-900 to-slate-800 p-6 md:p-8 rounded-3xl text-white shadow-xl relative overflow-hidden group">
+                        <div className="bg-gradient-to-br from-[#1E4A8D] to-[#2563eb] p-6 md:p-8 rounded-3xl text-white shadow-xl relative overflow-hidden group">
                             <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/20 rounded-full blur-3xl -mr-10 -mt-10 transition-all duration-700 group-hover:bg-blue-500/30" />
 
                             <div className="relative z-10">
@@ -139,7 +139,7 @@ export default function ContactAndDemo() {
                         </div>
 
                         {/* Quick Contact Info */}
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div className="bg-white p-4 rounded-2xl border border-gray-100 flex items-center gap-3">
                                 <div className="w-10 h-10 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center text-lg">
                                     📧

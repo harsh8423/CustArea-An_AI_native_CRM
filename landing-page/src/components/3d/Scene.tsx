@@ -92,42 +92,9 @@ function IconWithTexture({ iconPath, initialPosition, cubeLimit }: {
     );
 }
 
-// Bubble
-function Bubble({ position, scale }: { position: [number, number, number]; scale: number }) {
-    const meshRef = useRef<THREE.Mesh>(null);
-    const speed = 0.2 + Math.random() * 0.3;
-    const offset = Math.random() * Math.PI * 2;
-
-    useFrame((state) => {
-        if (meshRef.current) {
-            meshRef.current.position.y = position[1] + Math.sin(state.clock.elapsedTime * speed + offset) * 0.1;
-        }
-    });
-
-    return (
-        <mesh
-            ref={meshRef}
-            position={position}
-            scale={[scale, scale, scale]}
-            geometry={sphereGeometry}
-        >
-            <meshBasicMaterial color="#d0d0d0" transparent opacity={0.4} />
-        </mesh>
-    );
-}
-
 // Glass cube
 function GlassCube() {
     const meshRef = useRef<THREE.Group>(null);
-
-    const bubbles = useMemo(() => Array.from({ length: 30 }, () => ({
-        position: [
-            (Math.random() - 0.5) * 3,
-            (Math.random() - 0.5) * 3,
-            (Math.random() - 0.5) * 3,
-        ] as [number, number, number],
-        scale: 0.02 + Math.random() * 0.04,
-    })), []);
 
     useFrame((state) => {
         if (meshRef.current) {
@@ -156,10 +123,6 @@ function GlassCube() {
             <mesh renderOrder={0} geometry={wireframeGeometry}>
                 <meshBasicMaterial color="#a0a0a0" wireframe transparent opacity={0.5} depthWrite={false} />
             </mesh>
-
-            {bubbles.map((b, i) => (
-                <Bubble key={i} position={b.position} scale={b.scale} />
-            ))}
         </group>
     );
 }

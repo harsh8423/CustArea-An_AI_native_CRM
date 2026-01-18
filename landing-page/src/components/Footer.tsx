@@ -13,7 +13,7 @@ export default function Footer() {
                 <div className="mb-12 md:mb-24 flex flex-col md:flex-row items-start md:items-end justify-between gap-8 sm:gap-12 border-b border-slate-900 pb-12">
                     <div className="max-w-3xl">
                         <h2 className="text-4xl sm:text-5xl md:text-7xl lg:text-8xl font-['Outfit'] font-bold tracking-tight leading-[0.9] mb-6 sm:mb-8 text-white">
-                            Ready to <span className="text-blue-500">scale</span><br />
+                            Ready to <span className="text-gradient">scale</span><br />
                             your support?
                         </h2>
                         <p className="text-lg sm:text-xl md:text-2xl text-slate-400 max-w-xl leading-relaxed">
@@ -32,7 +32,7 @@ export default function Footer() {
                 <div className="mb-0 flex flex-col items-center text-center w-full">
                     <div className="flex items-center justify-center w-full">
                         <span className="text-[clamp(3.5rem,_15vw,_15vw)] font-['Outfit'] font-bold tracking-tighter leading-none select-none">
-                            <span className="text-[#1E4A8D]">Cust</span>
+                            <span className="text-gradient">Cust</span>
                             <span className="text-white">Area</span>
                         </span>
                     </div>

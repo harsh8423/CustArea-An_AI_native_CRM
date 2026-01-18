@@ -59,11 +59,11 @@ export default function Hero() {
                             <span className="text-slate-900">On-demand AI for</span>
                             <br />
                             <span className="relative inline-block mt-1 sm:mt-2">
-                                <span className="relative z-10 bg-gradient-to-r from-[#1E4A8D] via-[#2563eb] to-[#1E4A8D] bg-[length:200%_auto] animate-gradient bg-clip-text text-transparent">
+                                <span className="relative z-10 bg-gradient-to-r from-[#1E4A8D] via-[#2563eb] to-[#1E4A8D] bg-clip-text text-transparent">
                                     Sales and Customer Support
                                 </span>
-                                {/* Animated underline */}
-                                <span className="absolute bottom-0 left-0 w-full h-1 bg-gradient-to-r from-[#1E4A8D] via-[#2563eb] to-[#1E4A8D] bg-[length:200%_auto] animate-gradient rounded-full opacity-30 blur-sm" />
+                                {/* Static underline */}
+                                <span className="absolute bottom-0 left-0 w-full h-1 bg-gradient-to-r from-[#1E4A8D] via-[#2563eb] to-[#1E4A8D] rounded-full opacity-30 blur-sm" />
                             </span>
                         </h1>
 
@@ -115,22 +115,6 @@ export default function Hero() {
                         </Suspense>
                     </div>
                 </div>
-            </div>
-
-            {/* Floating Particles Animation */}
-            <div className="absolute inset-0 overflow-hidden pointer-events-none">
-                {[...Array(20)].map((_, i) => (
-                    <div
-                        key={i}
-                        className="absolute w-2 h-2 bg-blue-500/20 rounded-full animate-float"
-                        style={{
-                            left: `${Math.random() * 100}%`,
-                            top: `${Math.random() * 100}%`,
-                            animationDelay: `${Math.random() * 5}s`,
-                            animationDuration: `${15 + Math.random() * 10}s`,
-                        }}
-                    />
-                ))}
             </div>
         </section>
     );

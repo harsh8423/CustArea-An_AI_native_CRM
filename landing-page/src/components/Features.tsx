@@ -7,72 +7,86 @@ export default function Features() {
     const features = [
         {
             question: "Why worry about off-hours leads and support at all?",
-            title: "AI Agent (Off-Hours + On-Demand Coverage)",
+            title: "AI Agent",
+            intro: "Customers message whenever they want. Your business shouldn't stop when your team does.",
             image: "/features/aiagent.png",
-            content: {
-                intro: "Customers message whenever they want. Your business shouldn't stop when your team does.",
-                description: "CustArea's AI Agent handles sales and support across all channels whenever your team is unavailable or busy. It responds instantly, understands context, and keeps conversations moving."
-            },
+            items: [
+                "24/7 sales and support on demand",
+                "One AI agent across all channels",
+                "Context-aware replies with smart escalation"
+            ],
             bg: "bg-slate-50"
         },
         {
-            question: "Why should every business work the same way?",
-            title: "Workflow Engine (Custom Logic & Operations)",
+            question: "Why can't your tools adapt to your process?",
+            title: "Workflow Engine",
+            intro: "Your processes are unique. Your automation should be too.",
             image: "/features/workflowengine.png",
-            content: {
-                intro: "Your processes are unique. Your automation should be too.",
-                description: "CustArea's Workflow Engine lets you build custom workflows for sales and support — routing messages, creating leads or tickets, assigning owners, and executing complex logic."
-            },
+            items: [
+                "Fully customizable workflows",
+                "Intelligent message routing",
+                "AI + rules working together"
+            ],
             bg: "bg-white"
         },
         {
             question: "What happens when customers call and no one picks up?",
             title: "Voice Agent",
+            intro: "Calls don't wait. Customers don't retry forever.",
             image: "/features/voiceagent.png",
-            content: {
-                intro: "Calls don't wait. Customers don't retry forever.",
-                description: "CustArea's AI Voice Agent answers calls instantly, understands intent, responds naturally, and escalates to a human with full context when required."
-            },
+            items: [
+                "AI-powered call handling",
+                "Live understanding, not IVRs",
+                "Seamless human handoff"
+            ],
             bg: "bg-slate-50"
         },
         {
             question: "Why do campaigns stop working after the first message?",
             title: "AI Campaign Manager",
+            intro: "Sending messages is easy. Following up properly isn't.",
             image: "/features/campaign.png",
-            content: {
-                intro: "Sending messages is easy. Following up properly isn't.",
-                description: "With CustArea, AI manages your WhatsApp and email campaigns end-to-end — sending, following up, responding, and qualifying leads automatically."
-            },
+            items: [
+                "AI-managed outreach and follow-ups",
+                "Automatic intent detection",
+                "Qualified leads surfaced, not buried"
+            ],
             bg: "bg-white"
         },
         {
-            question: "Why is your pipeline always outdated?",
+            question: "Why doesn't your sales pipeline update itself?",
             title: "Sales Pipeline Handling",
+            intro: "Sales pipelines shouldn't rely on memory and manual updates.",
             image: "/features/salespipeline.png",
-            content: {
-                intro: "Sales pipelines shouldn't rely on memory and manual updates.",
-                description: "CustArea updates your pipeline based on real conversations. Leads move forward when customers show intent, respond, or engage — not when someone remembers to click a button."
-            },
+            items: [
+                "Conversation-driven lead movement",
+                "Automatic assignment and follow-ups",
+                "Clear visibility without manual work"
+            ],
             bg: "bg-slate-50"
         },
         {
             question: "Why are customer conversations scattered everywhere?",
             title: "Omnichannel Inbox",
+            intro: "Switching tools kills focus. Context gets lost. Responses get delayed.",
             image: "/features/inbox.png",
-            content: {
-                intro: "Switching tools kills focus. Context gets lost. Responses get delayed.",
-                description: "CustArea brings every conversation into one inbox — WhatsApp, chat, email, and more — so your team always knows what's happening, with whom, and why."
-            },
+            items: [
+                "Unified customer view",
+                "Faster response times",
+                "No tab-hopping or missed messages"
+            ],
             bg: "bg-white"
         },
         {
-            question: "Why do issues fall through the cracks?",
+            question: "Why do customer issues get lost?",
             title: "Ticketing System",
+            intro: "Not every conversation is a ticket. But every ticket should be handled properly.",
             image: "/features/ticket.png",
-            content: {
-                intro: "Not every conversation is a ticket. But every ticket should be handled properly.",
-                description: "CustArea automatically creates, tracks, and manages support tickets when needed — with priorities, context, and history already attached."
-            },
+            items: [
+                "Auto-created tickets from conversations",
+                "Clear ownership and status",
+                "Faster resolutions with full context"
+            ],
             bg: "bg-slate-50"
         }
     ];
@@ -92,7 +106,7 @@ export default function Features() {
                         Powerful Features
                     </span>
                     <h2 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-['Outfit'] font-bold mb-4 sm:mb-6 leading-tight text-slate-900">
-                        Everything to <span className="text-blue-600">win customers</span>
+                        Everything to <span className="text-gradient">win customers</span>
                     </h2>
                     <p className="text-sm sm:text-base md:text-lg lg:text-xl text-slate-600 font-['Inter'] leading-relaxed max-w-2xl mx-auto">
                         A complete platform combining AI intelligence, omni-channel communication,
@@ -126,21 +140,11 @@ export default function Features() {
                             </div>
 
                             {/* Content and Image Grid */}
-                            <div className="grid lg:grid-cols-2 gap-6 lg:gap-12 items-center">
+                            <div className="grid lg:grid-cols-2 gap-6 lg:gap-10 items-center">
 
-                                {/* Content Side */}
-                                <div className="order-2 lg:order-1">
-                                    <p className="text-base sm:text-lg md:text-xl font-['Inter'] font-medium text-slate-800 mb-3 md:mb-4 leading-relaxed">
-                                        {feature.content.intro}
-                                    </p>
-                                    <p className="text-xs sm:text-sm md:text-base text-slate-600 leading-relaxed max-w-xl">
-                                        {feature.content.description}
-                                    </p>
-                                </div>
-
-                                {/* Image Side */}
-                                <div className="order-1 lg:order-2 flex justify-center items-center">
-                                    <div className="relative w-full max-w-md lg:max-w-lg aspect-[4/3] flex items-center justify-center">
+                                {/* Image Side - Now on Left */}
+                                <div className="order-1 flex justify-center items-center">
+                                    <div className="relative w-full max-w-sm sm:max-w-md lg:max-w-lg aspect-[4/3] flex items-center justify-center">
                                         {/* Simple shadow/glow behind image */}
                                         <div className="absolute inset-0 bg-blue-500/5 blur-3xl rounded-full transform scale-75" />
                                         <img
@@ -148,6 +152,45 @@ export default function Features() {
                                             alt={feature.title}
                                             className="relative w-full h-full object-contain drop-shadow-2xl"
                                         />
+                                    </div>
+                                </div>
+
+                                {/* Content Side - Now on Right */}
+                                <div className="order-2">
+                                    {/* Intro Text */}
+                                    <p className="text-base sm:text-lg md:text-xl font-['Inter'] font-medium text-slate-800 mb-4 sm:mb-6 leading-relaxed">
+                                        {feature.intro}
+                                    </p>
+
+                                    {/* Mini Cards Grid */}
+                                    <div className="grid gap-3 sm:gap-4">
+                                        {feature.items.map((item, idx) => (
+                                            <div
+                                                key={idx}
+                                                className="bg-white border border-slate-200 rounded-xl p-3 sm:p-4 shadow-sm hover:shadow-md hover:border-blue-300 transition-all duration-300"
+                                            >
+                                                <div className="flex items-start gap-3">
+                                                    <div className="flex-shrink-0 w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-blue-100 flex items-center justify-center mt-0.5">
+                                                        <svg
+                                                            className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-blue-600"
+                                                            fill="none"
+                                                            viewBox="0 0 24 24"
+                                                            stroke="currentColor"
+                                                        >
+                                                            <path
+                                                                strokeLinecap="round"
+                                                                strokeLinejoin="round"
+                                                                strokeWidth={2.5}
+                                                                d="M5 13l4 4L19 7"
+                                                            />
+                                                        </svg>
+                                                    </div>
+                                                    <p className="text-sm sm:text-base font-['Inter'] text-slate-700 leading-relaxed flex-1">
+                                                        {item}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        ))}
                                     </div>
                                 </div>
 
