@@ -131,7 +131,7 @@ export default function ContactAndDemo() {
                                     onClick={openCalendly}
                                     className="w-full bg-white text-slate-900 font-bold py-3 rounded-xl hover:bg-blue-50 transition-colors flex items-center justify-center gap-2"
                                 >
-                                    <span>Schedule Free Call</span>
+                                    <span>Schedule Demo</span>
                                     <span className="text-lg">→</span>
                                 </button>
                                 <p className="text-center text-slate-400 text-xs mt-3">No commitment required</p>
