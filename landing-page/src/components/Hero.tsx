@@ -10,7 +10,7 @@ const SocialCube = dynamic(() => import('./3d/SocialCube'), { ssr: false });
 export default function Hero() {
     const handleScheduleClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
         e.preventDefault();
-        const element = document.querySelector('#demo');
+        const element = document.querySelector('#contact');
         if (element) {
             const offset = 80;
             const elementPosition = element.getBoundingClientRect().top;
@@ -79,7 +79,7 @@ export default function Hero() {
                         {/* Enhanced CTA with Glow Effect */}
                         <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
                             <a
-                                href="#demo"
+                                href="#contact"
                                 onClick={handleScheduleClick}
                                 className="group relative px-6 py-3 bg-gradient-to-r from-[#1E4A8D] via-[#2563eb] to-[#1E4A8D] bg-[length:200%_auto] text-white font-bold rounded-xl transition-all duration-500 shadow-2xl shadow-blue-500/50 hover:shadow-blue-500/70 hover:scale-105 overflow-hidden text-base w-full sm:w-auto animate-gradient"
                             >

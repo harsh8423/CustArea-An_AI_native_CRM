@@ -38,7 +38,7 @@ export default function Footer() {
                     </div>
 
                     <div className="flex gap-4 pt-6 sm:pt-8 pb-10 sm:pb-12 justify-center">
-                        <a href="#" className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-400 hover:bg-[#0077b5] hover:text-white hover:border-[#0077b5] transition-all duration-300 group min-h-[56px] min-w-[56px]">
+                        <a href="https://www.linkedin.com/company/join-custarea" target="_blank" rel="noopener noreferrer" className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-400 hover:bg-[#0077b5] hover:text-white hover:border-[#0077b5] transition-all duration-300 group min-h-[56px] min-w-[56px]">
                             <Linkedin className="w-7 h-7 sm:w-8 sm:h-8 group-hover:scale-110 transition-transform" />
                         </a>
                     </div>

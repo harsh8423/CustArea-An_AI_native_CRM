@@ -88,8 +88,8 @@ export default function Header() {
                     {/* CTA Button - Schedule Demo */}
                     <div className="hidden lg:flex items-center">
                         <a
-                            href="#demo"
-                            onClick={(e) => handleNavClick(e, '#demo')}
+                            href="#contact"
+                            onClick={(e) => handleNavClick(e, '#contact')}
                             className={`group relative bg-gradient-to-r from-[#1E4A8D] to-[#2563eb] text-white font-semibold rounded-full transition-all duration-300 shadow-lg shadow-blue-500/30 hover:shadow-xl hover:shadow-blue-500/50 hover:scale-105 overflow-hidden ${scrolled ? 'px-4 py-2 text-sm' : 'px-5 py-2.5 text-sm'}`}
                         >
                             {/* Shimmer effect */}
@@ -131,8 +131,8 @@ export default function Header() {
                                 </a>
                             ))}
                             <a
-                                href="#demo"
-                                onClick={(e) => handleNavClick(e, '#demo')}
+                                href="#contact"
+                                onClick={(e) => handleNavClick(e, '#contact')}
                                 className="mt-2 py-3 px-5 bg-gradient-to-r from-[#1E4A8D] to-[#2563eb] text-white font-semibold rounded-full transition-all duration-300 shadow-lg shadow-blue-500/30 hover:shadow-xl hover:scale-105 flex items-center justify-center gap-2 text-sm min-h-[44px]"
                             >
                                 <Calendar className="w-4 h-4" />
