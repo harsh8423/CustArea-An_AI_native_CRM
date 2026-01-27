@@ -1,8 +1,8 @@
 const express = require('express');
 const router = express.Router();
-const { receiveInboundMessage } = require('../controllers/messageController');
-const whatsappService = require('../services/whatsappService');
-const widgetService = require('../services/widgetService');
+const { receiveInboundMessage } = require('../conversations/controllers/messageController');
+const whatsappService = require('../whatsapp/services/whatsappService');
+const widgetService = require('../chat_widget/services/widgetService');
 
 // Webhook routes - no auth required (use signature verification per channel)
 // These are called by external services (Twilio, SES, Widget)

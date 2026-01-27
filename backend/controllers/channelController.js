@@ -1,6 +1,6 @@
 const { pool } = require('../config/db');
-const whatsappService = require('../services/whatsappService');
-const widgetService = require('../services/widgetService');
+const whatsappService = require('../whatsapp/services/whatsappService');
+const widgetService = require('../chat_widget/services/widgetService');
 
 // ===== WHATSAPP CONFIG =====
 

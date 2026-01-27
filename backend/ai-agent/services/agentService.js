@@ -9,11 +9,11 @@ const { pool } = require('../../config/db');
 const {
     Agent,
     Guidance,
-    Attribute,
     Guardrail,
     EscalationRule,
     EscalationGuidance
 } = require('../models');
+
 const { FUNCTION_TOOLS, executeTool, getContactInfo, getConversationHistory } = require('./functionTools');
 const { getKnowledgeContext } = require('./vectorSearchService');
 
@@ -130,48 +130,14 @@ async function buildConversationContext(tenantId, conversationId, contactId) {
 
 /**
  * Detect attributes in a message
+ * Note: Attribute model is not yet implemented - this returns empty for now
  */
 async function detectAttributes(tenantId, agentId, message) {
-    const attributes = await Attribute.find({ tenantId, agentId, isActive: true });
-    
-    if (attributes.length === 0) {
-        return {};
-    }
-
-    // Build detection prompt
-    const attributeDescriptions = attributes.map(attr => {
-        const values = attr.values.map(v => `${v.name}: ${v.description}`).join('; ');
-        return `${attr.name}: ${attr.description}. Values: [${values}]`;
-    }).join('\n');
-
-    const detectionPrompt = `Analyze the following customer message and detect these attributes:
-
-${attributeDescriptions}
-
-Customer Message: "${message}"
-
-Respond in JSON format with attribute names as keys and detected values as values.
-Only include attributes you can confidently detect. Example:
-{"Sentiment": "Negative", "Issue Type": "Billing", "Urgency": "High"}`;
-
-    try {
-        const response = await openai.chat.completions.create({
-            model: 'gpt-4o-mini',
-            messages: [
-                { role: 'system', content: 'You are an attribute detector. Respond only with valid JSON.' },
-                { role: 'user', content: detectionPrompt }
-            ],
-            temperature: 0.3,
-            response_format: { type: 'json_object' }
-        });
-
-        const detected = JSON.parse(response.choices[0].message.content);
-        return detected;
-    } catch (error) {
-        console.error('Error detecting attributes:', error);
-        return {};
-    }
+    // TODO: Implement Attribute model for advanced attribute detection
+    // For now, return empty attributes to allow the system to function
+    return {};
 }
+
 
 /**
  * Check escalation rules against detected attributes
@@ -314,6 +280,7 @@ async function chat(tenantId, conversationId, contactId, userMessage, messageHis
             console.warn('Knowledge search failed:', err.message);
         }
 
+
         // Build messages array
         const messages = [
             { role: 'system', content: systemPrompt }
@@ -350,24 +317,56 @@ async function chat(tenantId, conversationId, contactId, userMessage, messageHis
         const llmClient = agent.llmProvider === 'groq' ? groq : openai;
         const model = agent.llmProvider === 'groq' ? 'llama-3.1-8b-instant' : agent.llmModel;
 
-        const completion = await llmClient.chat.completions.create({
+        console.log(`[AgentService] Calling LLM - Provider: ${agent.llmProvider}, Model: ${model}`);
+        console.log(`[AgentService] Message count: ${messages.length}, Tools available: ${FUNCTION_TOOLS.length}`);
+
+        // GPT-5 models only support temperature=1 (default), other models support custom temperature
+        const isGPT5 = model.toLowerCase().includes('gpt-5');
+        
+        const completionParams = {
             model,
             messages,
             tools: FUNCTION_TOOLS,
             tool_choice: 'auto',
-            temperature: agent.temperature,
-            max_tokens: agent.maxTokens
-        });
+            max_completion_tokens: agent.maxTokens
+        };
+        
+        // Only add temperature for non-GPT-5 models
+        if (!isGPT5) {
+            completionParams.temperature = agent.temperature;
+        }
+
+        const completion = await llmClient.chat.completions.create(completionParams);
 
         const assistantMessage = completion.choices[0].message;
+        
+        // Log detailed response info
+        console.log(`[AgentService] LLM Raw Response:`, JSON.stringify({
+            hasToolCalls: !!assistantMessage.tool_calls,
+            toolCallCount: assistantMessage.tool_calls?.length || 0,
+            contentLength: assistantMessage.content?.length || 0,
+            content: assistantMessage.content,
+            finishReason: completion.choices[0].finish_reason
+        }, null, 2));
 
         // Handle tool calls if any
         if (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
+            console.log(`[AgentService] Processing ${assistantMessage.tool_calls.length} tool call(s)`);
             const toolResults = [];
             
             for (const toolCall of assistantMessage.tool_calls) {
+                console.log(`[AgentService] Tool Call: ${toolCall.function.name}`);
+                console.log(`[AgentService] Tool Arguments:`, toolCall.function.arguments);
+                
                 const args = JSON.parse(toolCall.function.arguments);
-                const result = await executeTool(tenantId, toolCall.function.name, args);
+                const toolContext = {
+                    conversationId,
+                    contactId
+                };
+                const result = await executeTool(tenantId, toolCall.function.name, args, toolContext);
+                
+                console.log(`[AgentService] Tool Result:`, JSON.stringify(result, null, 2));
+                
                 toolResults.push({
                     tool_call_id: toolCall.id,
                     role: 'tool',
@@ -376,6 +375,7 @@ async function chat(tenantId, conversationId, contactId, userMessage, messageHis
 
                 // Check for escalation from tool
                 if (result.action === 'escalate') {
+                    console.log(`[AgentService] Tool requested escalation`);
                     return {
                         response: "I'll connect you with a member of our team who can help further.",
                         metadata: {
@@ -392,21 +392,41 @@ async function chat(tenantId, conversationId, contactId, userMessage, messageHis
             messages.push(assistantMessage);
             messages.push(...toolResults);
 
-            const finalCompletion = await llmClient.chat.completions.create({
+            console.log(`[AgentService] Calling LLM again after tool execution with ${messages.length} messages`);
+            
+            const finalParams = {
                 model,
                 messages,
-                temperature: agent.temperature,
-                max_tokens: agent.maxTokens
-            });
+                max_completion_tokens: agent.maxTokens
+            };
+            
+            // Only add temperature for non-GPT-5 models
+            if (!isGPT5) {
+                finalParams.temperature = agent.temperature;
+            }
+            
+            const finalCompletion = await llmClient.chat.completions.create(finalParams);
 
             response = finalCompletion.choices[0].message.content;
+            console.log(`[AgentService] Final response after tools:`, {
+                length: response?.length || 0,
+                finishReason: finalCompletion.choices[0].finish_reason,
+                preview: response?.substring(0, 100)
+            });
         } else {
             response = assistantMessage.content;
+            console.log(`[AgentService] Direct response (no tools):`, {
+                length: response?.length || 0,
+                isEmpty: !response || response.trim().length === 0,
+                value: response
+            });
         }
+
 
         // Check output guardrails
         const outputGuardrail = await checkGuardrails(tenantId, agent._id, response, false);
         if (outputGuardrail.triggered && outputGuardrail.action === 'block') {
+            console.log(`[AgentService] Output guardrail triggered: ${outputGuardrail.guardrail}`);
             response = outputGuardrail.response;
         }
 
@@ -415,6 +435,8 @@ async function chat(tenantId, conversationId, contactId, userMessage, messageHis
             { _id: agent._id },
             { $inc: { totalMessages: 1 } }
         );
+
+        console.log(`[AgentService] Returning response - Length: ${response?.length || 0}, Empty: ${!response || response.trim().length === 0}`);
 
         return {
             response,

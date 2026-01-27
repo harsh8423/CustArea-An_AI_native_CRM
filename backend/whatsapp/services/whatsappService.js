@@ -1,0 +1,271 @@
+const twilio = require('twilio');
+const { pool } = require('../../config/db');
+const { queueIncomingMessage } = require('../../config/redis');
+const { findContact } = require('../../services/contactResolver');
+const { shouldAgentRespond } = require('../../controllers/agentDeploymentController');
+
+
+/**
+ * Get WhatsApp account by phone number (for webhook resolution)
+ */
+async function getAccountByPhoneNumber(phoneNumber) {
+    
+    const result = await pool.query(
+        `SELECT * FROM tenant_whatsapp_accounts WHERE phone_number = $1 AND is_active = true`,
+        [phoneNumber]
+    );
+    return result.rows[0] || null;
+}
+
+/**
+ * Get WhatsApp account by tenant ID
+ */
+async function getAccountByTenantId(tenantId) {
+    const result = await pool.query(
+        `SELECT * FROM tenant_whatsapp_accounts WHERE tenant_id = $1 AND is_active = true`,
+        [tenantId]
+    );
+    return result.rows[0] || null;
+}
+
+/**
+ * Create or update WhatsApp account for tenant
+ */
+async function upsertAccount(tenantId, data) {
+    const { twilioAccountSid, twilioAuthToken, phoneNumber } = data;
+    
+    const result = await pool.query(
+        `INSERT INTO tenant_whatsapp_accounts (tenant_id, twilio_account_sid, twilio_auth_token, phone_number)
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (phone_number) DO UPDATE SET
+            twilio_account_sid = EXCLUDED.twilio_account_sid,
+            twilio_auth_token = EXCLUDED.twilio_auth_token,
+            updated_at = now()
+         RETURNING *`,
+        [tenantId, twilioAccountSid, twilioAuthToken, phoneNumber]
+    );
+    return result.rows[0];
+}
+
+/**
+ * Send WhatsApp message via Twilio
+ */
+async function sendMessage(tenantId, to, body) {
+    const account = await getAccountByTenantId(tenantId);
+    if (!account) {
+        throw new Error('No WhatsApp account configured for tenant');
+    }
+
+    const client = twilio(account.twilio_account_sid, account.twilio_auth_token);
+    
+    const message = await client.messages.create({
+        from: account.phone_number,
+        to: to.startsWith('whatsapp:') ? to : `whatsapp:${to}`,
+        body
+    });
+
+    return {
+        twilioMessageSid: message.sid,
+        status: message.status
+    };
+}
+
+/**
+ * Handle incoming WhatsApp message webhook
+ */
+async function handleIncomingWebhook(webhookData) {
+    const { From, To, Body, MessageSid, ProfileName } = webhookData;
+
+    // 1. Resolve tenant by phone number
+    const account = await getAccountByPhoneNumber(To);
+    if (!account) {
+        console.warn(`Unknown WhatsApp number: ${To}`);
+        return null;
+    }
+
+    const tenantId = account.tenant_id;
+
+    // 2. Find contact using ContactResolver (lookup only - no auto-create)
+    const phoneNumber = From.replace('whatsapp:', '');
+    const contact = await findContact(tenantId, { phone: phoneNumber });
+
+    if (contact) {
+        console.log(`Found existing contact ${contact.id} for WhatsApp: ${phoneNumber}`);
+    } else {
+        console.log(`Unknown sender from WhatsApp: ${phoneNumber}`);
+    }
+
+    // Prepare sender info for unknown contacts
+    const senderDisplayName = ProfileName || phoneNumber;
+    const senderIdType = 'whatsapp';
+    const senderIdValue = From;
+
+    // 3. Find or create conversation (with or without contact)
+    let convResult = await pool.query(
+        `SELECT * FROM conversations 
+         WHERE tenant_id = $1 AND channel = 'whatsapp' AND channel_contact_id = $2 AND status != 'closed'
+         ORDER BY created_at DESC LIMIT 1`,
+        [tenantId, From]
+    );
+
+    let conversation;
+    if (convResult.rows.length === 0) {
+        convResult = await pool.query(
+            `INSERT INTO conversations (
+                tenant_id, contact_id, channel, channel_contact_id, status,
+                sender_display_name, sender_identifier_type, sender_identifier_value
+            ) VALUES ($1, $2, 'whatsapp', $3, 'open', $4, $5, $6) RETURNING *`,
+            [
+                tenantId, 
+                contact?.id || null,  // NULL if contact not found
+                From,
+                contact ? null : senderDisplayName,  // Only set if no contact
+                contact ? null : senderIdType,
+                contact ? null : senderIdValue
+            ]
+        );
+    } else {
+        conversation = convResult.rows[0];
+        
+        // Link contact if found and not already linked
+        if (contact && !conversation.contact_id) {
+            await pool.query(
+                `UPDATE conversations 
+                 SET contact_id = $1,
+                     sender_display_name = NULL,
+                     sender_identifier_type = NULL,
+                     sender_identifier_value = NULL,
+                     updated_at = now()
+                 WHERE id = $2`,
+                [contact.id, conversation.id]
+            );
+            conversation.contact_id = contact.id;
+        }
+    }
+    conversation = convResult.rows[0];
+
+    // 4. Create message
+    const msgResult = await pool.query(
+        `INSERT INTO messages (
+            tenant_id, conversation_id, direction, role, channel,
+            content_text, provider, provider_message_id, status
+        ) VALUES ($1, $2, 'inbound', 'user', 'whatsapp', $3, 'twilio', $4, 'received')
+        RETURNING *`,
+        [tenantId, conversation.id, Body, MessageSid]
+    );
+
+    const message = msgResult.rows[0];
+
+    // 5. Insert WhatsApp metadata
+    await pool.query(
+        `INSERT INTO message_whatsapp_metadata (message_id, wa_number, twilio_message_sid, raw_payload)
+         VALUES ($1, $2, $3, $4)`,
+        [message.id, From, MessageSid, JSON.stringify(webhookData)]
+    );
+
+    // 6. Queue for AI processing or Workflow processing
+    try {
+        const { hasTriggerWorkflow, getTriggerType } = require('../../services/workflowCheckService');
+
+        
+        // Check if tenant has an active workflow with WhatsApp trigger
+        const triggerType = getTriggerType('whatsapp', 'message');
+        const hasWorkflow = await hasTriggerWorkflow(tenantId, triggerType);
+        
+        if (hasWorkflow) {
+            // Build trigger data with all relevant WhatsApp message info
+            const triggerData = {
+                trigger_type: 'whatsapp_message',
+                sender: {
+                    phone: From,
+                    wa_number: From.replace('whatsapp:', ''),
+                    name: contact?.name || null
+                },
+                message: {
+                    id: message.id,
+                    body: Body,
+                    sid: MessageSid
+                },
+                contact_id: contact?.id || null,
+                conversation_id: conversation.id,
+                timestamp: new Date().toISOString()
+            };
+            
+            // Route to workflow stream for processing
+            await queueIncomingMessage(message.id, tenantId, conversation.id, 'whatsapp', true, triggerData);
+            console.log(`[WhatsApp] Queued message ${message.id} for WORKFLOW processing with trigger data`);
+        } else {
+            // Check if AI is enabled
+            const aiEnabled = await shouldAgentRespond(tenantId, 'whatsapp');
+            if (aiEnabled) {
+                await queueIncomingMessage(message.id, tenantId, conversation.id, 'whatsapp', false);
+                console.log(`[WhatsApp] Queued message ${message.id} for AI processing`);
+            } else {
+                console.log(`[WhatsApp] No workflow or AI enabled for tenant ${tenantId}, skipping queue`);
+            }
+        }
+    } catch (err) {
+        console.error('Failed to queue WhatsApp message:', err);
+    }
+
+    return { message, conversation, contact };
+}
+
+/**
+ * Handle Twilio status callback
+ */
+async function handleStatusCallback(statusData) {
+    const { MessageSid, MessageStatus } = statusData;
+
+    const statusMap = {
+        queued: 'pending',
+        sent: 'sent',
+        delivered: 'delivered',
+        read: 'read',
+        failed: 'failed',
+        undelivered: 'failed'
+    };
+
+    const newStatus = statusMap[MessageStatus];
+    if (!newStatus) return null;
+
+    // Find message by Twilio SID
+    const result = await pool.query(
+        `SELECT m.id FROM messages m
+         JOIN message_whatsapp_metadata wm ON wm.message_id = m.id
+         WHERE wm.twilio_message_sid = $1`,
+        [MessageSid]
+    );
+
+    if (result.rows.length === 0) return null;
+
+    const messageId = result.rows[0].id;
+
+    // Update status
+    const updates = [`status = $2`];
+    if (newStatus === 'sent') updates.push(`sent_at = now()`);
+    if (newStatus === 'delivered') updates.push(`delivered_at = now()`);
+    if (newStatus === 'read') updates.push(`read_at = now()`);
+
+    await pool.query(
+        `UPDATE messages SET ${updates.join(', ')} WHERE id = $1`,
+        [messageId, newStatus]
+    );
+
+    // Update metadata
+    await pool.query(
+        `UPDATE message_whatsapp_metadata SET status_callback_data = $2 WHERE message_id = $1`,
+        [messageId, JSON.stringify(statusData)]
+    );
+
+    return { messageId, newStatus };
+}
+
+module.exports = {
+    getAccountByPhoneNumber,
+    getAccountByTenantId,
+    upsertAccount,
+    sendMessage,
+    handleIncomingWebhook,
+    handleStatusCallback
+};

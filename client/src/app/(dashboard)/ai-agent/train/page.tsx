@@ -1,9 +1,10 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import {
-    Bot, BookOpen, MessageSquare, Shield, AlertTriangle, Plus,
-    Trash2, Loader2, Save, ChevronDown, ChevronRight, Edit2, X
+    Bot, MessageSquare, Shield, AlertTriangle, Plus,
+    Trash2, Loader2, Sparkles, CheckCircle2
 } from 'lucide-react';
 
 const API_BASE = 'http://localhost:8000/api/ai-agent';
@@ -22,29 +23,23 @@ async function fetchAPI(endpoint: string, options: RequestInit = {}) {
     return res.json();
 }
 
-const TABS = [
-    { id: 'guidance', label: 'Guidance', icon: MessageSquare },
-    { id: 'attributes', label: 'Attributes', icon: BookOpen },
-    { id: 'guardrails', label: 'Guardrails', icon: Shield },
-    { id: 'escalation', label: 'Escalation', icon: AlertTriangle },
-];
-
 const GUIDANCE_CATEGORIES = [
-    { value: 'communication_style', label: 'Communication Style', description: 'Vocabulary, tone, language' },
-    { value: 'context_clarification', label: 'Context Clarification', description: 'Follow-up questions' },
-    { value: 'content_sources', label: 'Content Sources', description: 'Specific content to reference' },
-    { value: 'spam', label: 'Spam Handling', description: 'How to handle spam messages' },
+    { value: 'communication_style', label: 'Communication Style', desc: 'How should your AI talk?' },
+    { value: 'context_clarification', label: 'Context & Questions', desc: 'What to ask when unclear' },
+    { value: 'content_sources', label: 'Knowledge Usage', desc: 'When to reference materials' },
+    { value: 'spam', label: 'Spam Handling', desc: 'How to handle unwanted messages' },
 ];
 
 const GUARDRAIL_TYPES = [
-    { value: 'content_filter', label: 'Content Filter', description: 'Block inappropriate content' },
-    { value: 'topic_restriction', label: 'Topic Restriction', description: 'Limit to certain topics' },
-    { value: 'pii_protection', label: 'PII Protection', description: 'Prevent PII disclosure' },
-    { value: 'forbidden_actions', label: 'Forbidden Actions', description: 'Actions agent must never take' },
+    { value: 'content_filter', label: 'Content Filter', desc: 'Block specific topics' },
+    { value: 'topic_restriction', label: 'Topic Boundaries', desc: 'Stay within subjects' },
+    { value: 'pii_protection', label: 'Privacy Protection', desc: 'Never share sensitive data' },
+    { value: 'forbidden_actions', label: 'Action Limits', desc: 'Things AI cannot do' },
 ];
 
 export default function TrainPage() {
-    const [activeTab, setActiveTab] = useState('guidance');
+    const searchParams = useSearchParams();
+    const activeTab = searchParams?.get('tab') || 'guidance';
     const [status, setStatus] = useState<any>(null);
     const [loading, setLoading] = useState(true);
 
@@ -66,59 +61,18 @@ export default function TrainPage() {
     if (loading) {
         return (
             <div className="h-full flex items-center justify-center bg-[#eff0eb]">
-                <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
+                <div className="text-center">
+                    <Loader2 className="w-6 h-6 animate-spin text-amber-400 mx-auto mb-2" />
+                    <p className="text-xs text-gray-500">Loading training settings...</p>
+                </div>
             </div>
         );
     }
 
     return (
-        <div className="h-full flex flex-col bg-[#eff0eb] p-4">
-            {/* Header */}
-            <div className="bg-white rounded-2xl shadow-sm p-4 mb-4">
-                <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center">
-                            <Bot className="w-5 h-5 text-white" />
-                        </div>
-                        <div>
-                            <h1 className="text-lg font-semibold text-gray-900">Train AI Agent</h1>
-                            <p className="text-xs text-gray-500">Configure behavior rules, attributes, and safety guardrails</p>
-                        </div>
-                    </div>
-                    <div className="flex gap-2 text-xs">
-                        <span className="px-3 py-1.5 bg-amber-50 text-amber-700 rounded-full font-medium">
-                            {status?.stats?.guidances || 0} guidance
-                        </span>
-                        <span className="px-3 py-1.5 bg-orange-50 text-orange-700 rounded-full font-medium">
-                            {status?.stats?.guardrails || 0} guardrails
-                        </span>
-                    </div>
-                </div>
-            </div>
-
-            {/* Tab Bar */}
-            <div className="bg-white rounded-2xl shadow-sm mb-4 overflow-hidden">
-                <div className="flex">
-                    {TABS.map(tab => (
-                        <button
-                            key={tab.id}
-                            onClick={() => setActiveTab(tab.id)}
-                            className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium transition-all
-                                ${activeTab === tab.id
-                                    ? 'text-amber-600 border-b-2 border-amber-600 bg-amber-50/50'
-                                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50 border-b-2 border-transparent'}`}
-                        >
-                            <tab.icon className="w-4 h-4" />
-                            {tab.label}
-                        </button>
-                    ))}
-                </div>
-            </div>
-
-            {/* Content */}
-            <div className="flex-1 bg-white rounded-2xl shadow-sm overflow-hidden">
+        <div className="h-full bg-[#eff0eb] p-4">
+            <div className="h-full bg-gradient-to-br from-white/90 to-white/70 backdrop-blur-xl rounded-3xl shadow-lg overflow-hidden flex flex-col">
                 {activeTab === 'guidance' && <GuidanceTab onUpdate={loadStatus} />}
-                {activeTab === 'attributes' && <AttributesTab onUpdate={loadStatus} />}
                 {activeTab === 'guardrails' && <GuardrailsTab onUpdate={loadStatus} />}
                 {activeTab === 'escalation' && <EscalationTab onUpdate={loadStatus} />}
             </div>
@@ -131,7 +85,7 @@ function GuidanceTab({ onUpdate }: { onUpdate: () => void }) {
     const [guidances, setGuidances] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [showAdd, setShowAdd] = useState(false);
-    const [formData, setFormData] = useState({ category: 'communication_style', title: '', content: '' });
+    const [formData, setFormData] = useState({ category: ' communication_style', title: '', content: '' });
     const [adding, setAdding] = useState(false);
 
     useEffect(() => {
@@ -178,267 +132,152 @@ function GuidanceTab({ onUpdate }: { onUpdate: () => void }) {
         }
     }
 
-    const groupedGuidances = guidances.reduce((acc, g) => {
-        if (!acc[g.category]) acc[g.category] = [];
-        acc[g.category].push(g);
-        return acc;
-    }, {} as Record<string, any[]>);
-
-    return (
-        <div className="h-full flex flex-col p-6">
-            <div className="flex items-center justify-between mb-6">
-                <div>
-                    <h2 className="text-lg font-semibold text-gray-900 mb-1">Guidance Rules</h2>
-                    <p className="text-sm text-gray-500">Define how your AI agent should communicate and behave</p>
-                </div>
-                <button
-                    onClick={() => setShowAdd(!showAdd)}
-                    className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-amber-500 to-orange-600 text-white rounded-xl text-sm font-medium hover:from-amber-600 hover:to-orange-700 transition-all"
-                >
-                    <Plus className="w-4 h-4" />
-                    Add Guidance
-                </button>
-            </div>
-
-            {showAdd && (
-                <div className="mb-6 p-4 bg-gray-50 rounded-xl border border-gray-100">
-                    <div className="grid grid-cols-2 gap-4 mb-4">
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1.5">Category</label>
-                            <select
-                                value={formData.category}
-                                onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                                className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white"
-                            >
-                                {GUIDANCE_CATEGORIES.map(cat => (
-                                    <option key={cat.value} value={cat.value}>{cat.label}</option>
-                                ))}
-                            </select>
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1.5">Title</label>
-                            <input
-                                value={formData.title}
-                                onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                                className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
-                                placeholder="e.g., Friendly Tone"
-                            />
-                        </div>
-                    </div>
-                    <div className="mb-4">
-                        <label className="block text-sm font-medium text-gray-700 mb-1.5">Content</label>
-                        <textarea
-                            value={formData.content}
-                            onChange={(e) => setFormData({ ...formData, content: e.target.value })}
-                            className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 h-24"
-                            placeholder="Describe the guidance rule in detail..."
-                        />
-                    </div>
-                    <div className="flex gap-2">
-                        <button
-                            onClick={addGuidance}
-                            disabled={adding}
-                            className="px-4 py-2 bg-amber-600 text-white rounded-lg text-sm font-medium disabled:opacity-50"
-                        >
-                            {adding ? 'Adding...' : 'Add Guidance'}
-                        </button>
-                        <button
-                            onClick={() => setShowAdd(false)}
-                            className="px-4 py-2 bg-gray-100 text-gray-600 rounded-lg text-sm font-medium"
-                        >
-                            Cancel
-                        </button>
-                    </div>
-                </div>
-            )}
-
-            <div className="flex-1 overflow-y-auto space-y-6">
-                {loading ? (
-                    <div className="flex items-center justify-center py-12">
-                        <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
-                    </div>
-                ) : guidances.length === 0 ? (
-                    <div className="text-center py-12">
-                        <MessageSquare className="w-12 h-12 mx-auto mb-4 text-gray-300" />
-                        <p className="text-gray-500">No guidance rules yet</p>
-                        <p className="text-gray-400 text-sm">Add rules to define how your AI should communicate</p>
-                    </div>
-                ) : (
-                    GUIDANCE_CATEGORIES.map(cat => {
-                        const items = groupedGuidances[cat.value] || [];
-                        if (items.length === 0) return null;
-                        return (
-                            <div key={cat.value}>
-                                <h3 className="text-sm font-semibold text-gray-700 mb-3">{cat.label}</h3>
-                                <div className="space-y-2">
-                                    {items.map((g: any) => (
-                                        <div key={g._id} className="flex items-start justify-between p-4 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors">
-                                            <div className="flex-1 min-w-0">
-                                                <p className="font-medium text-gray-900">{g.title}</p>
-                                                <p className="text-sm text-gray-500 mt-1">{g.content}</p>
-                                            </div>
-                                            <button
-                                                onClick={() => deleteGuidance(g._id)}
-                                                className="p-2 hover:bg-red-100 rounded-lg transition-colors ml-2"
-                                            >
-                                                <Trash2 className="w-4 h-4 text-red-500" />
-                                            </button>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        );
-                    })
-                )}
-            </div>
-        </div>
-    );
-}
-
-// Attributes Tab
-function AttributesTab({ onUpdate }: { onUpdate: () => void }) {
-    const [attributes, setAttributes] = useState<any[]>([]);
-    const [templates, setTemplates] = useState<any>({});
-    const [loading, setLoading] = useState(true);
-    const [showAdd, setShowAdd] = useState(false);
-    const [selectedTemplate, setSelectedTemplate] = useState<string>('');
-
-    useEffect(() => {
-        Promise.all([
-            fetchAPI('/attributes'),
-            fetchAPI('/attributes/templates')
-        ]).then(([attrs, temps]) => {
-            setAttributes(attrs);
-            setTemplates(temps);
-        }).finally(() => setLoading(false));
-    }, []);
-
-    async function addFromTemplate() {
-        if (!selectedTemplate || !templates[selectedTemplate]) return;
-        const template = templates[selectedTemplate];
-        try {
-            await fetchAPI('/attributes', {
-                method: 'POST',
-                body: JSON.stringify(template)
-            });
-            const attrs = await fetchAPI('/attributes');
-            setAttributes(attrs);
-            setShowAdd(false);
-            onUpdate();
-        } catch (err) {
-            console.error('Failed to add:', err);
-        }
-    }
-
-    async function deleteAttribute(id: string) {
-        try {
-            await fetchAPI(`/attributes/${id}`, { method: 'DELETE' });
-            const attrs = await fetchAPI('/attributes');
-            setAttributes(attrs);
-            onUpdate();
-        } catch (err) {
-            console.error('Failed to delete:', err);
-        }
+    if (loading) {
+        return <div className="flex items-center justify-center h-full"><Loader2 className="w-5 h-5 animate-spin text-amber-400" /></div>;
     }
 
     return (
-        <div className="h-full flex flex-col p-6">
-            <div className="flex items-center justify-between mb-6">
-                <div>
-                    <h2 className="text-lg font-semibold text-gray-900 mb-1">Attributes</h2>
-                    <p className="text-sm text-gray-500">Define attributes to detect from conversations for routing and escalation</p>
-                </div>
-                <button
-                    onClick={() => setShowAdd(!showAdd)}
-                    className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-amber-500 to-orange-600 text-white rounded-xl text-sm font-medium hover:from-amber-600 hover:to-orange-700 transition-all"
-                >
-                    <Plus className="w-4 h-4" />
-                    Add Attribute
-                </button>
-            </div>
-
-            {showAdd && (
-                <div className="mb-6 p-4 bg-gray-50 rounded-xl border border-gray-100">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Select Template</label>
-                    <div className="grid grid-cols-2 gap-3 mb-4">
-                        {Object.entries(templates).map(([key, temp]: [string, any]) => (
-                            <button
-                                key={key}
-                                onClick={() => setSelectedTemplate(key)}
-                                className={`p-3 text-left rounded-xl border-2 transition-all ${selectedTemplate === key
-                                        ? 'border-amber-500 bg-amber-50'
-                                        : 'border-gray-200 hover:border-gray-300'
-                                    }`}
-                            >
-                                <p className="font-medium text-gray-900">{temp.name}</p>
-                                <p className="text-xs text-gray-500">{temp.description}</p>
-                            </button>
-                        ))}
+        <div className="h-full flex flex-col overflow-hidden">
+            <div className="flex-1 overflow-y-auto p-6">
+                {/* Hero */}
+                <div className="mb-5">
+                    <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-50 rounded-full mb-2">
+                        <MessageSquare className="w-3 h-3 text-amber-500" />
+                        <span className="text-[10px] font-semibold text-amber-700 uppercase tracking-wider">Personality</span>
                     </div>
-                    <div className="flex gap-2">
-                        <button
-                            onClick={addFromTemplate}
-                            disabled={!selectedTemplate}
-                            className="px-4 py-2 bg-amber-600 text-white rounded-lg text-sm font-medium disabled:opacity-50"
-                        >
-                            Add Attribute
-                        </button>
-                        <button
-                            onClick={() => setShowAdd(false)}
-                            className="px-4 py-2 bg-gray-100 text-gray-600 rounded-lg text-sm font-medium"
-                        >
-                            Cancel
-                        </button>
+                    <h1 className="text-xl font-bold text-gray-900 mb-2">How should your AI communicate?</h1>
+                    <p className="text-sm text-gray-600 leading-relaxed">
+                        Teach your AI the art of conversation. Define tone, style, and behavior patterns.
+                    </p>
+                </div>
+
+                {/* Quick Guide */}
+                <div className="mb-5 p-4 bg-gradient-to-br from-amber-50/50 to-orange-50/30 rounded-2xl">
+                    <div className="flex gap-3">
+                        <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-amber-300 to-orange-400 flex items-center justify-center flex-shrink-0">
+                            <Sparkles className="w-4 h-4 text-white" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                            <h3 className="font-semibold text-gray-900 mb-1 text-sm">Getting Started</h3>
+                            <p className="text-xs text-gray-700 mb-2">Guidance rules shape how your AI talks:</p>
+                            <ul className="space-y-0.5 text-xs text-gray-700">
+                                <li className="flex items-start gap-1">
+                                    <CheckCircle2 className="w-3 h-3 text-emerald-500 flex-shrink-0 mt-0.5" />
+                                    <span><strong>Style:</strong> "Be warm, not robotic"</span>
+                                </li>
+                                <li className="flex items-start gap-1">
+                                    <CheckCircle2 className="w-3 h-3 text-emerald-500 flex-shrink-0 mt-0.5" />
+                                    <span><strong>Questions:</strong> "Ask before troubleshooting"</span>
+                                </li>
+                            </ul>
+                        </div>
                     </div>
                 </div>
-            )}
 
-            <div className="flex-1 overflow-y-auto">
-                {loading ? (
-                    <div className="flex items-center justify-center py-12">
-                        <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
-                    </div>
-                ) : attributes.length === 0 ? (
-                    <div className="text-center py-12">
-                        <BookOpen className="w-12 h-12 mx-auto mb-4 text-gray-300" />
-                        <p className="text-gray-500">No attributes defined yet</p>
-                        <p className="text-gray-400 text-sm">Add attributes like Sentiment, Urgency, Issue Type</p>
-                    </div>
-                ) : (
-                    <div className="space-y-3">
-                        {attributes.map(attr => (
-                            <div key={attr._id} className="p-4 bg-gray-50 rounded-xl">
-                                <div className="flex items-start justify-between mb-3">
-                                    <div>
-                                        <p className="font-medium text-gray-900">{attr.name}</p>
-                                        <p className="text-sm text-gray-500">{attr.description}</p>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <span className={`px-2 py-1 text-xs rounded-full ${attr.purpose === 'escalation' ? 'bg-red-100 text-red-700' :
-                                                attr.purpose === 'routing' ? 'bg-blue-100 text-blue-700' :
-                                                    'bg-gray-100 text-gray-600'
-                                            }`}>
-                                            {attr.purpose}
-                                        </span>
+                <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-base font-bold text-gray-900">Your Rules ({guidances.length})</h2>
+                    {!showAdd && (
+                        <button
+                            onClick={() => setShowAdd(true)}
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-amber-400 to-orange-400 hover:from-amber-500 hover:to-orange-500 text-white rounded-xl text-sm font-medium shadow-sm transition-all"
+                        >
+                            <Plus className="w-4 h-4" />
+                            Add Rule
+                        </button>
+                    )}
+                </div>
+
+                {/* Add Form */}
+                {showAdd && (
+                    <div className="mb-5 p-5 bg-white rounded-2xl shadow-sm">
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-xs font-semibold text-gray-700 mb-2">Category</label>
+                                <div className="grid grid-cols-2 gap-2">
+                                    {GUIDANCE_CATEGORIES.map(cat => (
                                         <button
-                                            onClick={() => deleteAttribute(attr._id)}
-                                            className="p-2 hover:bg-red-100 rounded-lg transition-colors"
+                                            key={cat.value}
+                                            onClick={() => setFormData({ ...formData, category: cat.value })}
+                                            className={`p-3 rounded-xl text-left text-xs transition-all ${formData.category === cat.value
+                                                    ? 'bg-gradient-to-br from-amber-400 to-orange-400 text-white shadow-sm'
+                                                    : 'bg-gray-50 hover:bg-gray-100 text-gray-700'
+                                                }`}
                                         >
-                                            <Trash2 className="w-4 h-4 text-red-500" />
+                                            <div className="font-semibold mb-0.5">{cat.label}</div>
+                                            <div className={`text-[10px] ${formData.category === cat.value ? 'text-amber-50' : 'text-gray-500'}`}>
+                                                {cat.desc}
+                                            </div>
                                         </button>
-                                    </div>
-                                </div>
-                                <div className="flex flex-wrap gap-2">
-                                    {attr.values?.map((v: any, i: number) => (
-                                        <span key={i} className="px-2 py-1 bg-white border border-gray-200 rounded-lg text-xs text-gray-600">
-                                            {v.name}
-                                        </span>
                                     ))}
                                 </div>
                             </div>
-                        ))}
+                            <div>
+                                <label className="block text-xs font-semibold text-gray-700 mb-2">Rule Name</label>
+                                <input
+                                    value={formData.title}
+                                    onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                                    className="w-full px-3 py-2 bg-gray-50 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+                                    placeholder="e.g., Be Empathetic"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-semibold text-gray-700 mb-2">Instructions</label>
+                                <textarea
+                                    value={formData.content}
+                                    onChange={(e) => setFormData({ ...formData, content: e.target.value })}
+                                    className="w-full px-3 py-2 bg-gray-50 rounded-xl text-sm resize-none focus:outline-none focus:ring-2 focus:ring-amber-400"
+                                    rows={3}
+                                    placeholder="Always listen carefully..."
+                                />
+                            </div>
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={addGuidance}
+                                    disabled={adding}
+                                    className="flex-1 px-4 py-2 bg-gradient-to-r from-amber-400 to-orange-400 text-white rounded-xl text-sm font-medium disabled:opacity-50"
+                                >
+                                    {adding ? 'Saving...' : 'Save'}
+                                </button>
+                                <button
+                                    onClick={() => setShowAdd(false)}
+                                    className="px-4 py-2 bg-gray-100 text-gray-700 rounded-xl text-sm font-medium"
+                                >
+                                    Cancel
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 )}
+
+                {/* Rules List */}
+                <div className="space-y-3">
+                    {guidances.length === 0 ? (
+                        <div className="text-center py-12">
+                            <MessageSquare className="w-10 h-10 mx-auto mb-2 text-gray-300" />
+                            <p className="text-sm text-gray-500">No guidance rules yet</p>
+                        </div>
+                    ) : (
+                        guidances.map(g => (
+                            <div key={g._id} className="group p-4 bg-white hover:bg-amber-50/30 rounded-2xl shadow-sm transition-all">
+                                <div className="flex items-start justify-between">
+                                    <div className="flex-1">
+                                        <span className="inline-block px-2 py-0.5 bg-amber-100 text-amber-700 text-[10px] font-bold rounded-full uppercase mb-1.5">
+                                            {GUIDANCE_CATEGORIES.find(c => c.value === g.category)?.label || g.category}
+                                        </span>
+                                        <h3 className="font-semibold text-gray-900 mb-1 text-sm">{g.title}</h3>
+                                        <p className="text-xs text-gray-700 leading-relaxed">{g.content}</p>
+                                    </div>
+                                    <button
+                                        onClick={() => deleteGuidance(g._id)}
+                                        className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg opacity-0 group-hover:opacity-100 transition-all"
+                                    >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                </div>
+                            </div>
+                        ))
+                    )}
+                </div>
             </div>
         </div>
     );
@@ -449,12 +288,7 @@ function GuardrailsTab({ onUpdate }: { onUpdate: () => void }) {
     const [guardrails, setGuardrails] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [showAdd, setShowAdd] = useState(false);
-    const [formData, setFormData] = useState({
-        type: 'content_filter',
-        name: '',
-        triggerResponse: '',
-        patterns: ''
-    });
+    const [formData, setFormData] = useState({ type: 'content_filter', name: '', triggerResponse: '', patterns: '' });
     const [adding, setAdding] = useState(false);
 
     useEffect(() => {
@@ -479,9 +313,7 @@ function GuardrailsTab({ onUpdate }: { onUpdate: () => void }) {
             await fetchAPI('/guardrails', {
                 method: 'POST',
                 body: JSON.stringify({
-                    type: formData.type,
-                    name: formData.name,
-                    triggerResponse: formData.triggerResponse,
+                    ...formData,
                     condition: {
                         type: 'keyword',
                         patterns: formData.patterns.split(',').map(p => p.trim()).filter(Boolean)
@@ -510,131 +342,167 @@ function GuardrailsTab({ onUpdate }: { onUpdate: () => void }) {
         }
     }
 
+    if (loading) {
+        return <div className="flex items-center justify-center h-full"><Loader2 className="w-5 h-5 animate-spin text-orange-400" /></div>;
+    }
+
     return (
-        <div className="h-full flex flex-col p-6">
-            <div className="flex items-center justify-between mb-6">
-                <div>
-                    <h2 className="text-lg font-semibold text-gray-900 mb-1">Guardrails</h2>
-                    <p className="text-sm text-gray-500">Safety rules to control what your AI can and cannot do</p>
+        <div className="h-full flex flex-col overflow-hidden">
+            <div className="flex-1 overflow-y-auto p-6">
+                {/* Hero */}
+                <div className="mb-5">
+                    <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-red-50 rounded-full mb-2">
+                        <Shield className="w-3 h-3 text-red-500" />
+                        <span className="text-[10px] font-semibold text-red-700 uppercase tracking-wider">Safety</span>
+                    </div>
+                    <h1 className="text-xl font-bold text-gray-900 mb-2">What topics are off-limits?</h1>
+                    <p className="text-sm text-gray-600 leading-relaxed">
+                        Set hard boundaries your AI will never cross. Protect against inappropriate responses.
+                    </p>
                 </div>
-                <button
-                    onClick={() => setShowAdd(!showAdd)}
-                    className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-amber-500 to-orange-600 text-white rounded-xl text-sm font-medium hover:from-amber-600 hover:to-orange-700 transition-all"
-                >
-                    <Plus className="w-4 h-4" />
-                    Add Guardrail
-                </button>
-            </div>
 
-            {showAdd && (
-                <div className="mb-6 p-4 bg-gray-50 rounded-xl border border-gray-100">
-                    <div className="grid grid-cols-2 gap-4 mb-4">
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1.5">Type</label>
-                            <select
-                                value={formData.type}
-                                onChange={(e) => setFormData({ ...formData, type: e.target.value })}
-                                className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white"
-                            >
-                                {GUARDRAIL_TYPES.map(t => (
-                                    <option key={t.value} value={t.value}>{t.label}</option>
-                                ))}
-                            </select>
+                {/* Quick Guide */}
+                <div className="mb-5 p-4 bg-gradient-to-br from-red-50/50 to-orange-50/30 rounded-2xl">
+                    <div className="flex gap-3">
+                        <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-red-300 to-orange-400 flex items-center justify-center flex-shrink-0">
+                            <Shield className="w-4 h-4 text-white" />
                         </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1.5">Name</label>
-                            <input
-                                value={formData.name}
-                                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                                className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
-                                placeholder="e.g., No Competitor Discussion"
-                            />
+                        <div className="flex-1 min-w-0">
+                            <h3 className="font-semibold text-gray-900 mb-1 text-sm">How It Works</h3>
+                            <p className="text-xs text-gray-700">
+                                When a user mentions forbidden keywords, AI blocks the conversation and responds with your custom message.
+                            </p>
                         </div>
                     </div>
-                    <div className="mb-4">
-                        <label className="block text-sm font-medium text-gray-700 mb-1.5">Trigger Keywords (comma-separated)</label>
-                        <input
-                            value={formData.patterns}
-                            onChange={(e) => setFormData({ ...formData, patterns: e.target.value })}
-                            className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
-                            placeholder="competitor1, competitor2, discount"
-                        />
-                    </div>
-                    <div className="mb-4">
-                        <label className="block text-sm font-medium text-gray-700 mb-1.5">Response when triggered</label>
-                        <input
-                            value={formData.triggerResponse}
-                            onChange={(e) => setFormData({ ...formData, triggerResponse: e.target.value })}
-                            className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
-                            placeholder="I'm not able to help with that. Can I assist with something else?"
-                        />
-                    </div>
-                    <div className="flex gap-2">
-                        <button
-                            onClick={addGuardrail}
-                            disabled={adding}
-                            className="px-4 py-2 bg-amber-600 text-white rounded-lg text-sm font-medium disabled:opacity-50"
-                        >
-                            {adding ? 'Adding...' : 'Add Guardrail'}
-                        </button>
-                        <button
-                            onClick={() => setShowAdd(false)}
-                            className="px-4 py-2 bg-gray-100 text-gray-600 rounded-lg text-sm font-medium"
-                        >
-                            Cancel
-                        </button>
-                    </div>
                 </div>
-            )}
 
-            <div className="flex-1 overflow-y-auto">
-                {loading ? (
-                    <div className="flex items-center justify-center py-12">
-                        <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
-                    </div>
-                ) : guardrails.length === 0 ? (
-                    <div className="text-center py-12">
-                        <Shield className="w-12 h-12 mx-auto mb-4 text-gray-300" />
-                        <p className="text-gray-500">No guardrails defined yet</p>
-                        <p className="text-gray-400 text-sm">Add guardrails to keep your AI safe and on-topic</p>
-                    </div>
-                ) : (
-                    <div className="space-y-3">
-                        {guardrails.map(g => (
-                            <div key={g._id} className="flex items-center justify-between p-4 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors">
-                                <div className="flex items-center gap-3 flex-1">
-                                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${g.type === 'content_filter' ? 'bg-red-100' :
-                                            g.type === 'topic_restriction' ? 'bg-yellow-100' :
-                                                g.type === 'pii_protection' ? 'bg-blue-100' :
-                                                    'bg-gray-100'
-                                        }`}>
-                                        <Shield className={`w-5 h-5 ${g.type === 'content_filter' ? 'text-red-600' :
-                                                g.type === 'topic_restriction' ? 'text-yellow-600' :
-                                                    g.type === 'pii_protection' ? 'text-blue-600' :
-                                                        'text-gray-600'
-                                            }`} />
-                                    </div>
-                                    <div>
-                                        <p className="font-medium text-gray-900">{g.name}</p>
-                                        <p className="text-xs text-gray-500">{g.type.replace('_', ' ')}</p>
-                                    </div>
+                <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-base font-bold text-gray-900">Active Guardrails ({guardrails.length})</h2>
+                    {!showAdd && (
+                        <button
+                            onClick={() => setShowAdd(true)}
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-red-400 to-orange-400 hover:from-red-500 hover:to-orange-500 text-white rounded-xl text-sm font-medium shadow-sm transition-all"
+                        >
+                            <Plus className="w-4 h-4" />
+                            Add Guardrail
+                        </button>
+                    )}
+                </div>
+
+                {/* Add Form */}
+                {showAdd && (
+                    <div className="mb-5 p-5 bg-white rounded-2xl shadow-sm">
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-xs font-semibold text-gray-700 mb-2">Type</label>
+                                <div className="grid grid-cols-2 gap-2">
+                                    {GUARDRAIL_TYPES.map(type => (
+                                        <button
+                                            key={type.value}
+                                            onClick={() => setFormData({ ...formData, type: type.value })}
+                                            className={`p-3 rounded-xl text-left text-xs transition-all ${formData.type === type.value
+                                                    ? 'bg-gradient-to-br from-red-400 to-orange-400 text-white shadow-sm'
+                                                    : 'bg-gray-50 hover:bg-gray-100 text-gray-700'
+                                                }`}
+                                        >
+                                            <div className="font-semibold mb-0.5">{type.label}</div>
+                                            <div className={`text-[10px] ${formData.type === type.value ? 'text-red-50' : 'text-gray-500'}`}>
+                                                {type.desc}
+                                            </div>
+                                        </button>
+                                    ))}
                                 </div>
-                                <div className="flex items-center gap-2">
-                                    <span className={`px-2 py-1 text-xs rounded-full ${g.isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
-                                        }`}>
-                                        {g.isActive ? 'Active' : 'Inactive'}
-                                    </span>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-semibold text-gray-700 mb-2">Name</label>
+                                <input
+                                    value={formData.name}
+                                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                                    className="w-full px-3 py-2 bg-gray-50 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-400"
+                                    placeholder="e.g., No Competitor Discussion"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-semibold text-gray-700 mb-2">Forbidden Keywords</label>
+                                <input
+                                    value={formData.patterns}
+                                    onChange={(e) => setFormData({ ...formData, patterns: e.target.value })}
+                                    className="w-full px-3 py-2 bg-gray-50 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-400"
+                                    placeholder="competitor1, discount"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-semibold text-gray-700 mb-2">Response When Triggered</label>
+                                <textarea
+                                    value={formData.triggerResponse}
+                                    onChange={(e) => setFormData({ ...formData, triggerResponse: e.target.value })}
+                                    className="w-full px-3 py-2 bg-gray-50 rounded-xl text-sm resize-none focus:outline-none focus:ring-2 focus:ring-red-400"
+                                    rows={2}
+                                    placeholder="I cannot discuss that topic..."
+                                />
+                            </div>
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={addGuardrail}
+                                    disabled={adding}
+                                    className="flex-1 px-4 py-2 bg-gradient-to-r from-red-400 to-orange-400 text-white rounded-xl text-sm font-medium disabled:opacity-50"
+                                >
+                                    {adding ? 'Saving...' : 'Save'}
+                                </button>
+                                <button
+                                    onClick={() => setShowAdd(false)}
+                                    className="px-4 py-2 bg-gray-100 text-gray-700 rounded-xl text-sm font-medium"
+                                >
+                                    Cancel
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Guardrails List */}
+                <div className="space-y-3">
+                    {guardrails.length === 0 ? (
+                        <div className="text-center py-12">
+                            <Shield className="w-10 h-10 mx-auto mb-2 text-gray-300" />
+                            <p className="text-sm text-gray-500">No guardrails yet</p>
+                        </div>
+                    ) : (
+                        guardrails.map(g => (
+                            <div key={g._id} className="group p-4 bg-white hover:bg-red-50/30 rounded-2xl shadow-sm transition-all">
+                                <div className="flex items-start justify-between">
+                                    <div className="flex-1">
+                                        <span className="inline-block px-2 py-0.5 bg-red-100 text-red-700 text-[10px] font-bold rounded-full uppercase mb-1.5">
+                                            {GUARDRAIL_TYPES.find(t => t.value === g.type)?.label || g.type}
+                                        </span>
+                                        <h3 className="font-semibold text-gray-900 mb-2 text-sm">{g.name}</h3>
+                                        {g.condition?.patterns && (
+                                            <div className="mb-2">
+                                                <p className="text-[10px] font-semibold text-gray-500 mb-1">Blocks:</p>
+                                                <div className="flex flex-wrap gap-1">
+                                                    {g.condition.patterns.map((p: string, i: number) => (
+                                                        <span key={i} className="px-2 py-0.5 bg-gray-100 text-gray-700 text-[10px] rounded">
+                                                            "{p}"
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                        <div className="p-2 bg-gray-50 rounded-xl">
+                                            <p className="text-xs text-gray-700 italic">"{g.triggerResponse}"</p>
+                                        </div>
+                                    </div>
                                     <button
                                         onClick={() => deleteGuardrail(g._id)}
-                                        className="p-2 hover:bg-red-100 rounded-lg transition-colors"
+                                        className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg opacity-0 group-hover:opacity-100 transition-all"
                                     >
-                                        <Trash2 className="w-4 h-4 text-red-500" />
+                                        <Trash2 className="w-3.5 h-3.5" />
                                     </button>
                                 </div>
                             </div>
-                        ))}
-                    </div>
-                )}
+                        ))
+                    )}
+                </div>
             </div>
         </div>
     );
@@ -643,25 +511,19 @@ function GuardrailsTab({ onUpdate }: { onUpdate: () => void }) {
 // Escalation Tab
 function EscalationTab({ onUpdate }: { onUpdate: () => void }) {
     const [rules, setRules] = useState<any[]>([]);
-    const [guidances, setGuidances] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
-    const [showAddRule, setShowAddRule] = useState(false);
-    const [showAddGuidance, setShowAddGuidance] = useState(false);
-    const [ruleForm, setRuleForm] = useState({ name: '', attributeName: '', value: '', targetTeam: 'support' });
-    const [guidanceForm, setGuidanceForm] = useState({ title: '', content: '' });
+    const [showAdd, setShowAdd] = useState(false);
+    const [formData, setFormData] = useState({ name: '', attributeName: '', operator: 'equals', value: '', targetTeam: 'support' });
+    const [adding, setAdding] = useState(false);
 
     useEffect(() => {
-        loadData();
+        loadRules();
     }, []);
 
-    async function loadData() {
+    async function loadRules() {
         try {
-            const [r, g] = await Promise.all([
-                fetchAPI('/escalation/rules'),
-                fetchAPI('/escalation/guidance')
-            ]);
-            setRules(r);
-            setGuidances(g);
+            const data = await fetchAPI('/escalation/rules');
+            setRules(data);
         } catch (err) {
             console.error('Failed to load:', err);
         } finally {
@@ -670,177 +532,185 @@ function EscalationTab({ onUpdate }: { onUpdate: () => void }) {
     }
 
     async function addRule() {
+        if (!formData.name) return;
+        setAdding(true);
         try {
             await fetchAPI('/escalation/rules', {
                 method: 'POST',
                 body: JSON.stringify({
-                    name: ruleForm.name,
-                    conditions: [{ attributeName: ruleForm.attributeName, operator: 'equals', value: ruleForm.value }],
+                    name: formData.name,
+                    conditions: [{ attributeName: formData.attributeName, operator: formData.operator, value: formData.value }],
                     action: 'escalate',
-                    targetTeam: ruleForm.targetTeam
+                    targetTeam: formData.targetTeam
                 })
             });
-            setShowAddRule(false);
-            setRuleForm({ name: '', attributeName: '', value: '', targetTeam: 'support' });
-            loadData();
+            setShowAdd(false);
+            setFormData({ name: '', attributeName: '', operator: 'equals', value: '', targetTeam: 'support' });
+            loadRules();
             onUpdate();
         } catch (err) {
             console.error('Failed to add:', err);
-        }
-    }
-
-    async function addGuidance() {
-        try {
-            await fetchAPI('/escalation/guidance', {
-                method: 'POST',
-                body: JSON.stringify(guidanceForm)
-            });
-            setShowAddGuidance(false);
-            setGuidanceForm({ title: '', content: '' });
-            loadData();
-            onUpdate();
-        } catch (err) {
-            console.error('Failed to add:', err);
+        } finally {
+            setAdding(false);
         }
     }
 
     async function deleteRule(id: string) {
-        await fetchAPI(`/escalation/rules/${id}`, { method: 'DELETE' });
-        loadData();
-        onUpdate();
-    }
-
-    async function deleteGuidance(id: string) {
-        await fetchAPI(`/escalation/guidance/${id}`, { method: 'DELETE' });
-        loadData();
-        onUpdate();
+        try {
+            await fetchAPI(`/escalation/rules/${id}`, { method: 'DELETE' });
+            loadRules();
+            onUpdate();
+        } catch (err) {
+            console.error('Failed to delete:', err);
+        }
     }
 
     if (loading) {
-        return (
-            <div className="flex items-center justify-center h-full">
-                <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
-            </div>
-        );
+        return <div className="flex items-center justify-center h-full"><Loader2 className="w-5 h-5 animate-spin text-rose-400" /></div>;
     }
 
     return (
-        <div className="h-full flex flex-col p-6 overflow-y-auto">
-            {/* Rules Section */}
-            <div className="mb-8">
-                <div className="flex items-center justify-between mb-4">
-                    <div>
-                        <h3 className="text-md font-semibold text-gray-900">Escalation Rules</h3>
-                        <p className="text-xs text-gray-500">Automatic triggers based on detected attributes</p>
+        <div className="h-full flex flex-col overflow-hidden">
+            <div className="flex-1 overflow-y-auto p-6">
+                {/* Hero */}
+                <div className="mb-5">
+                    <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-rose-50 rounded-full mb-2">
+                        <AlertTriangle className="w-3 h-3 text-rose-500" />
+                        <span className="text-[10px] font-semibold text-rose-700 uppercase tracking-wider">Handoff</span>
                     </div>
-                    <button
-                        onClick={() => setShowAddRule(!showAddRule)}
-                        className="flex items-center gap-2 px-3 py-1.5 bg-amber-100 text-amber-700 rounded-lg text-sm font-medium hover:bg-amber-200 transition-all"
-                    >
-                        <Plus className="w-3 h-3" />
-                        Add Rule
-                    </button>
+                    <h1 className="text-xl font-bold text-gray-900 mb-2">When should AI ask for help?</h1>
+                    <p className="text-sm text-gray-600 leading-relaxed">
+                        Set smart triggers to automatically transfer conversations to your team.
+                    </p>
                 </div>
 
-                {showAddRule && (
-                    <div className="mb-4 p-4 bg-gray-50 rounded-xl border border-gray-100">
-                        <div className="grid grid-cols-4 gap-3 mb-3">
-                            <input
-                                placeholder="Rule name"
-                                value={ruleForm.name}
-                                onChange={(e) => setRuleForm({ ...ruleForm, name: e.target.value })}
-                                className="px-3 py-2 border border-gray-200 rounded-lg text-sm"
-                            />
-                            <input
-                                placeholder="Attribute (e.g., Sentiment)"
-                                value={ruleForm.attributeName}
-                                onChange={(e) => setRuleForm({ ...ruleForm, attributeName: e.target.value })}
-                                className="px-3 py-2 border border-gray-200 rounded-lg text-sm"
-                            />
-                            <input
-                                placeholder="Value (e.g., Negative)"
-                                value={ruleForm.value}
-                                onChange={(e) => setRuleForm({ ...ruleForm, value: e.target.value })}
-                                className="px-3 py-2 border border-gray-200 rounded-lg text-sm"
-                            />
-                            <input
-                                placeholder="Target team"
-                                value={ruleForm.targetTeam}
-                                onChange={(e) => setRuleForm({ ...ruleForm, targetTeam: e.target.value })}
-                                className="px-3 py-2 border border-gray-200 rounded-lg text-sm"
-                            />
+                {/* Quick Guide */}
+                <div className="mb-5 p-4 bg-gradient-to-br from-rose-50/50 to-pink-50/30 rounded-2xl">
+                    <div className="flex gap-3">
+                        <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-rose-300 to-pink-400 flex items-center justify-center flex-shrink-0">
+                            <AlertTriangle className="w-4 h-4 text-white" />
                         </div>
-                        <button onClick={addRule} className="px-4 py-2 bg-amber-600 text-white rounded-lg text-sm">Add</button>
+                        <div className="flex-1 min-w-0">
+                            <h3 className="font-semibold text-gray-900 mb-1 text-sm">Examples</h3>
+                            <div className="text-xs text-gray-700 space-y-0.5">
+                                <p>• Sentiment = Negative → Alert support</p>
+                                <p>• Topic = Refund → Alert billing</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-base font-bold text-gray-900">Escalation Rules ({rules.length})</h2>
+                    {!showAdd && (
+                        <button
+                            onClick={() => setShowAdd(true)}
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-rose-400 to-pink-400 hover:from-rose-500 hover:to-pink-500 text-white rounded-xl text-sm font-medium shadow-sm transition-all"
+                        >
+                            <Plus className="w-4 h-4" />
+                            Add Rule
+                        </button>
+                    )}
+                </div>
+
+                {/* Add Form */}
+                {showAdd && (
+                    <div className="mb-5 p-5 bg-white rounded-2xl shadow-sm">
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-xs font-semibold text-gray-700 mb-2">Rule Name</label>
+                                <input
+                                    value={formData.name}
+                                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                                    className="w-full px-3 py-2 bg-gray-50 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-rose-400"
+                                    placeholder="e.g., Angry Customer"
+                                />
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className="block text-xs font-semibold text-gray-700 mb-2">Attribute</label>
+                                    <input
+                                        value={formData.attributeName}
+                                        onChange={(e) => setFormData({ ...formData, attributeName: e.target.value })}
+                                        className="w-full px-3 py-2 bg-gray-50 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-rose-400"
+                                        placeholder="Sentiment"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-semibold text-gray-700 mb-2">Value</label>
+                                    <input
+                                        value={formData.value}
+                                        onChange={(e) => setFormData({ ...formData, value: e.target.value })}
+                                        className="w-full px-3 py-2 bg-gray-50 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-rose-400"
+                                        placeholder="Negative"
+                                    />
+                                </div>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-semibold text-gray-700 mb-2">Transfer To Team</label>
+                                <input
+                                    value={formData.targetTeam}
+                                    onChange={(e) => setFormData({ ...formData, targetTeam: e.target.value })}
+                                    className="w-full px-3 py-2 bg-gray-50 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-rose-400"
+                                    placeholder="support"
+                                />
+                            </div>
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={addRule}
+                                    disabled={adding}
+                                    className="flex-1 px-4 py-2 bg-gradient-to-r from-rose-400 to-pink-400 text-white rounded-xl text-sm font-medium disabled:opacity-50"
+                                >
+                                    {adding ? 'Saving...' : 'Save'}
+                                </button>
+                                <button
+                                    onClick={() => setShowAdd(false)}
+                                    className="px-4 py-2 bg-gray-100 text-gray-700 rounded-xl text-sm font-medium"
+                                >
+                                    Cancel
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 )}
 
-                <div className="space-y-2">
+                {/* Rules List */}
+                <div className="space-y-3">
                     {rules.length === 0 ? (
-                        <p className="text-gray-400 text-sm py-4">No escalation rules yet</p>
-                    ) : rules.map(r => (
-                        <div key={r._id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                            <div>
-                                <p className="font-medium text-gray-900">{r.name}</p>
-                                <p className="text-xs text-gray-500">
-                                    When {r.conditions?.[0]?.attributeName} = {r.conditions?.[0]?.value} → {r.targetTeam}
-                                </p>
-                            </div>
-                            <button onClick={() => deleteRule(r._id)} className="p-2 hover:bg-red-100 rounded-lg">
-                                <Trash2 className="w-4 h-4 text-red-500" />
-                            </button>
+                        <div className="text-center py-12">
+                            <AlertTriangle className="w-10 h-10 mx-auto mb-2 text-gray-300" />
+                            <p className="text-sm text-gray-500">No escalation rules yet</p>
                         </div>
-                    ))}
-                </div>
-            </div>
-
-            {/* Guidance Section */}
-            <div>
-                <div className="flex items-center justify-between mb-4">
-                    <div>
-                        <h3 className="text-md font-semibold text-gray-900">Escalation Guidance</h3>
-                        <p className="text-xs text-gray-500">Natural language guidance for when to escalate</p>
-                    </div>
-                    <button
-                        onClick={() => setShowAddGuidance(!showAddGuidance)}
-                        className="flex items-center gap-2 px-3 py-1.5 bg-amber-100 text-amber-700 rounded-lg text-sm font-medium hover:bg-amber-200 transition-all"
-                    >
-                        <Plus className="w-3 h-3" />
-                        Add Guidance
-                    </button>
-                </div>
-
-                {showAddGuidance && (
-                    <div className="mb-4 p-4 bg-gray-50 rounded-xl border border-gray-100">
-                        <input
-                            placeholder="Title"
-                            value={guidanceForm.title}
-                            onChange={(e) => setGuidanceForm({ ...guidanceForm, title: e.target.value })}
-                            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm mb-3"
-                        />
-                        <textarea
-                            placeholder="When should the AI escalate? (Free-form guidance)"
-                            value={guidanceForm.content}
-                            onChange={(e) => setGuidanceForm({ ...guidanceForm, content: e.target.value })}
-                            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm h-20 mb-3"
-                        />
-                        <button onClick={addGuidance} className="px-4 py-2 bg-amber-600 text-white rounded-lg text-sm">Add</button>
-                    </div>
-                )}
-
-                <div className="space-y-2">
-                    {guidances.length === 0 ? (
-                        <p className="text-gray-400 text-sm py-4">No escalation guidance yet</p>
-                    ) : guidances.map(g => (
-                        <div key={g._id} className="flex items-start justify-between p-3 bg-gray-50 rounded-lg">
-                            <div>
-                                <p className="font-medium text-gray-900">{g.title}</p>
-                                <p className="text-sm text-gray-500">{g.content}</p>
+                    ) : (
+                        rules.map(r => (
+                            <div key={r._id} className="group p-4 bg-white hover:bg-rose-50/30 rounded-2xl shadow-sm transition-all">
+                                <div className="flex items-start justify-between">
+                                    <div className="flex-1">
+                                        <h3 className="font-semibold text-gray-900 mb-2 text-sm">{r.name}</h3>
+                                        <div className="flex items-center gap-2 text-xs flex-wrap">
+                                            <span className="px-2 py-0.5 bg-gray-100 text-gray-700 rounded-full font-medium">
+                                                {r.conditions?.[0]?.attributeName}
+                                            </span>
+                                            <span className="text-gray-400">=</span>
+                                            <span className="px-2 py-0.5 bg-gray-100 text-gray-700 rounded-full font-medium">
+                                                {r.conditions?.[0]?.value}
+                                            </span>
+                                            <span className="text-gray-400">→</span>
+                                            <span className="px-2 py-0.5 bg-gradient-to-r from-rose-400 to-pink-400 text-white rounded-full font-semibold">
+                                                {r.targetTeam}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <button
+                                        onClick={() => deleteRule(r._id)}
+                                        className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg opacity-0 group-hover:opacity-100 transition-all"
+                                    >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                </div>
                             </div>
-                            <button onClick={() => deleteGuidance(g._id)} className="p-2 hover:bg-red-100 rounded-lg">
-                                <Trash2 className="w-4 h-4 text-red-500" />
-                            </button>
-                        </div>
-                    ))}
+                        ))
+                    )}
                 </div>
             </div>
         </div>

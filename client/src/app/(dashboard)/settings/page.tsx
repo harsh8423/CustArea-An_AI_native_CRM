@@ -1,16 +1,18 @@
 "use client";
 
 import { useState } from "react";
-import { Mail, Shield, Bell, User, MessageCircle } from "lucide-react";
+import { Mail, Shield, Bell, User, MessageCircle, Puzzle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { EmailSettings } from "@/components/settings/EmailSettings";
 import { ChannelSettings } from "@/components/settings/ChannelSettings";
+import IntegrationsPage from "./integrations/page";
 
-type SettingsTab = "emails" | "channels" | "security" | "notifications" | "profile";
+type SettingsTab = "emails" | "channels" | "integrations" | "security" | "notifications" | "profile";
 
 const TABS = [
     { id: "emails" as const, label: "Emails", icon: Mail },
     { id: "channels" as const, label: "Channels", icon: MessageCircle },
+    { id: "integrations" as const, label: "Integrations", icon: Puzzle },
     { id: "security" as const, label: "Security", icon: Shield },
     { id: "notifications" as const, label: "Notifications", icon: Bell },
     { id: "profile" as const, label: "Profile", icon: User },
@@ -66,6 +68,7 @@ export default function SettingsPage() {
                 <div className="flex-1 bg-white rounded-2xl shadow-sm overflow-hidden">
                     {activeTab === "emails" && <EmailSettings />}
                     {activeTab === "channels" && <ChannelSettings />}
+                    {activeTab === "integrations" && <IntegrationsPage />}
                     {activeTab === "security" && (
                         <div className="h-full flex flex-col items-center justify-center text-gray-400">
                             <div className="h-16 w-16 rounded-2xl bg-gray-50 flex items-center justify-center mb-4">

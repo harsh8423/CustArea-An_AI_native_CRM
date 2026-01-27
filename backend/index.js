@@ -18,36 +18,47 @@ app.use(
   cors({})
 );
 
-const authRoutes = require('./routes/authRoutes');
+// Module imports
+const { authRoutes, newAuthRoutes } = require('./auth'); // Auth module
+const { routes: emailRoutes, gmailOAuthRoutes, outlookOAuthRoutes } = require('./email'); // Email module
+const { conversationRoutes, conversationEmailRoutes, messageRoutes } = require('./conversations'); // Conversations module
+
+// Remaining individual routes
 const importRoutes = require('./routes/importRoutes');
 const contactRoutes = require('./routes/contactRoutes');
 const leadRoutes = require('./routes/leadRoutes');
-const emailRoutes = require('./routes/emailRoutes');
-const conversationRoutes = require('./routes/conversationRoutes');
-const messageRoutes = require('./routes/messageRoutes');
 const webhookRoutes = require('./routes/webhookRoutes');
 const channelRoutes = require('./routes/channelRoutes');
 const agentRoutes = require('./ai-agent/routes/agentRoutes');
 const ticketRoutes = require('./routes/ticketRoutes');
 const ticketTagRoutes = require('./routes/ticketTagRoutes');
 const macroRoutes = require('./routes/macroRoutes');
+const featureRoutes = require('./routes/featureRoutes');
 
 // MongoDB connection for AI Agent
 const { connectMongoDB } = require('./config/mongodb');
 
-app.use('/api/auth', authRoutes);
+// Routes
+app.use('/api/auth', authRoutes); // Legacy auth (backward compatibility)
+app.use('/api/v2/auth', newAuthRoutes); // New Supabase OTP auth
+app.use('/api/settings/email/gmail', gmailOAuthRoutes); // Gmail OAuth
+app.use('/oauth/google', gmailOAuthRoutes); // OAuth callback endpoint
+app.use('/api/settings/email/outlook', outlookOAuthRoutes); // Outlook OAuth
+app.use('/oauth/microsoft', outlookOAuthRoutes); // OAuth callback endpoint
 app.use('/api/import', importRoutes);
 app.use('/api/contacts', contactRoutes);
 app.use('/api/leads', leadRoutes);
 app.use('/api/email', emailRoutes);
 app.use('/api/conversations', conversationRoutes);
 app.use('/api/messages', messageRoutes);
+app.use('/api/conversation-email', conversationEmailRoutes);
 app.use('/api/webhooks', webhookRoutes);
 app.use('/api/channels', channelRoutes);
 app.use('/api/ai-agent', agentRoutes);
 app.use('/api/tickets', ticketRoutes);
 app.use('/api/ticket-tags', ticketTagRoutes);
 app.use('/api/macros', macroRoutes);
+app.use('/api/features', featureRoutes);
 
 // AI Processing routes (for Lambda integration)
 const aiProcessingController = require('./controllers/aiProcessingController');
@@ -61,7 +72,8 @@ app.use('/api/widget', widgetRoutes);
 app.use('/webhook', webhookRoutes);
 // Alias for /webhook/twilio/whatsapp -> /webhook/whatsapp
 app.post('/webhook/twilio/whatsapp', async (req, res) => {
-    const whatsappService = require('./services/whatsappService');
+    const whatsappService = require('./whatsapp/services/whatsappService');
+
     try {
         await whatsappService.handleIncomingWebhook(req.body);
         res.status(200).send('OK');
@@ -115,11 +127,13 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Something went wrong!' });
 });
 
-// Initialize Redis Streams and Start Workers
+// Initialize Redis Streams and Workers from modules
 const { initRedisStreams } = require('./config/redis');
-const { runWhatsappOutboundWorker } = require('./workers/whatsappOutbound');
-const { runEmailOutboundWorker } = require('./workers/emailOutbound');
-const { runAiIncomingWorker } = require('./workers/aiIncomingWorker');
+const { runWhatsappOutboundWorker } = require('./whatsapp');
+const { runEmailOutboundWorker } = require('./email');
+const { runAiIncomingWorker } = require('./ai-agent');
+
+
 
 const port = process.env.PORT || 8000;
 const server = app.listen(port, async () => {
@@ -155,12 +169,6 @@ const server = app.listen(port, async () => {
   }
 });
 
-// WebSocket Server Setup
-const { setupSttService } = require('./services/stt/sttService');
-const { setupOpenAIRealtimeService } = require('./services/llm/openaiRealtimeService');
-const { setupTwilioWebSocket } = require('./services/twilioWebSocketService');
-const { setupOpenAIRealtimeTwilio } = require('./services/openaiRealtimeTwilioService');
-const { setupLegacyTwilioService } = require('./services/legacyTwilioService');
 
 // Phone module with AI Agent integration
 const { setupLegacyHandler, setupRealtimeHandler, setupConvRelayHandler, routes: phoneRoutes } = require('./phone');
@@ -172,45 +180,19 @@ app.use('/api/phone', phoneRoutes);
 app.use('/twiml', phoneRoutes);  // Twilio webhook hits /twiml for inbound calls
 app.use('/make-call', require('./routes/outbound'));
 
-
-const sttWss = setupSttService();
-const realtimeWss = setupOpenAIRealtimeService();
-const twilioWss = setupTwilioWebSocket();
-const openaiTwilioWss = setupOpenAIRealtimeTwilio();
-const legacyTwilioWss = setupLegacyTwilioService();
-
 // Phone module WebSocket handlers (with AI Agent integration)
 const phoneLegacyWss = setupLegacyHandler();
 const phoneRealtimeWss = setupRealtimeHandler();
 const phoneConvRelayWss = setupConvRelayHandler();
 
+
 server.on('upgrade', (request, socket, head) => {
   const parsedUrl = url.parse(request.url, true);
   const pathname = parsedUrl.pathname;
 
-  if (pathname === '/client-audio') {
-    sttWss.handleUpgrade(request, socket, head, (ws) => {
-      sttWss.emit('connection', ws, request);
-    });
-  } else if (pathname === '/openai-realtime') {
-    realtimeWss.handleUpgrade(request, socket, head, (ws) => {
-      realtimeWss.emit('connection', ws, request);
-    });
-  } else if (pathname === '/twilio-stream') {
-    twilioWss.handleUpgrade(request, socket, head, (ws) => {
-      twilioWss.emit('connection', ws, request);
-    });
-  } else if (pathname === '/twilio-stream-openai') {
-    openaiTwilioWss.handleUpgrade(request, socket, head, (ws) => {
-      openaiTwilioWss.emit('connection', ws, request);
-    });
-  } else if (pathname === '/twilio-stream-legacy') {
-    legacyTwilioWss.handleUpgrade(request, socket, head, (ws) => {
-      legacyTwilioWss.emit('connection', ws, request);
-    });
   // Phone module WebSocket routes (with AI Agent integration)
   // Use startsWith because path includes sessionId: /phone-ws/legacy/{sessionId}
-  } else if (pathname.startsWith('/phone-ws/legacy/')) {
+  if (pathname.startsWith('/phone-ws/legacy/')) {
     phoneLegacyWss.handleUpgrade(request, socket, head, (ws) => {
       phoneLegacyWss.emit('connection', ws, request);
     });

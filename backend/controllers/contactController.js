@@ -85,16 +85,18 @@ exports.createContact = async (req, res) => {
         const { name, email, phone, company_name, source } = req.body;
         const tenantId = req.user.tenantId;
 
-        const result = await pool.query(
-            `INSERT INTO contacts (tenant_id, name, email, phone, company_name, source) 
-             VALUES ($1, $2, $3, $4, $5, $6) 
-             RETURNING *`,
-            [tenantId, name, email, phone, company_name, source || 'Manual']
+        // Use contactResolver to ensure contact_identifiers are created
+        const { createContact } = require('../services/contactResolver');
+        
+        const contact = await createContact(
+            tenantId,
+            { email, phone },  // identifiers
+            { name, source: source || 'Manual', companyName: company_name }  // metadata
         );
 
-        res.status(201).json(result.rows[0]);
+        res.status(201).json({ contact });
     } catch (err) {
-        console.error(err);
+        console.error('Error creating contact:', err);
         res.status(500).json({ error: 'Server error' });
     }
 };

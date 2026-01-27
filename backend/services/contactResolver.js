@@ -8,7 +8,107 @@
 const { pool } = require('../config/db');
 
 /**
- * Find or create a contact with cross-channel deduplication
+ * Find contact without creating (lookup only)
+ * Returns null if not found - use this for inbound message handling
+ * 
+ * @param {string} tenantId - Tenant ID
+ * @param {Object} identifiers - Contact identifiers
+ * @param {string} identifiers.email - Email address
+ * @param {string} identifiers.phone - Phone number
+ * @param {string} identifiers.visitorId - Widget visitor ID
+ * @returns {Object|null} contact object or null if not found
+ */
+async function findContact(tenantId, identifiers = {}) {
+    const { email, phone, visitorId } = identifiers;
+    const normalizedEmail = email ? email.toLowerCase().trim() : null;
+    const normalizedPhone = phone ? normalizePhone(phone) : null;
+    const normalizedVisitorId = visitorId ? visitorId.trim() : null;
+
+    const client = await pool.connect();
+    try {
+        let contact = null;
+
+        // Priority 1: Search by email (most reliable identifier)
+        if (normalizedEmail) {
+            contact = await findContactByIdentifier(client, tenantId, 'email', normalizedEmail);
+        }
+
+        // Priority 2: Search by phone
+        if (!contact && normalizedPhone) {
+            contact = await findContactByIdentifier(client, tenantId, 'phone', normalizedPhone);
+        }
+
+        // Priority 3: Search by visitor ID (least reliable)
+        if (!contact && normalizedVisitorId) {
+            contact = await findContactByIdentifier(client, tenantId, 'visitor_id', normalizedVisitorId);
+        }
+
+        return contact; // Returns null if not found
+    } finally {
+        client.release();
+    }
+}
+
+/**
+ * Create new contact explicitly - use for user-initiated actions
+ * 
+ * @param {string} tenantId - Tenant ID
+ * @param {Object} identifiers - Contact identifiers
+ * @param {string} identifiers.email - Email address
+ * @param {string} identifiers.phone - Phone number
+ * @param {string} identifiers.visitorId - Widget visitor ID
+ * @param {Object} metadata - Additional contact data
+ * @param {string} metadata.name - Contact name
+ * @param {string} metadata.source - Source channel
+ * @param {string} metadata.companyName - Company name
+ * @returns {Object} created contact
+ */
+async function createContact(tenantId, identifiers = {}, metadata = {}) {
+    const { email, phone, visitorId } = identifiers;
+    const { name, source, companyName } = metadata;
+
+    const normalizedEmail = email ? email.toLowerCase().trim() : null;
+    const normalizedPhone = phone ? normalizePhone(phone) : null;
+    const normalizedVisitorId = visitorId ? visitorId.trim() : null;
+
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        const insertResult = await client.query(
+            `INSERT INTO contacts (tenant_id, name, email, phone, source, company_name)
+             VALUES ($1, $2, $3, $4, $5, $6)
+             RETURNING *`,
+            [tenantId, name || null, normalizedEmail, normalizedPhone, source || 'manual', companyName || null]
+        );
+        const contact = insertResult.rows[0];
+
+        // Add identifiers
+        if (normalizedEmail) {
+            await addIdentifier(client, tenantId, contact.id, 'email', normalizedEmail, source, true);
+        }
+        if (normalizedPhone) {
+            await addIdentifier(client, tenantId, contact.id, 'phone', normalizedPhone, source, true);
+        }
+        if (normalizedVisitorId) {
+            await addIdentifier(client, tenantId, contact.id, 'visitor_id', normalizedVisitorId, source, true);
+        }
+
+        await client.query('COMMIT');
+        return contact;
+    } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+    } finally {
+        client.release();
+    }
+}
+
+/**
+ * LEGACY: Find or create a contact with cross-channel deduplication
+ * 
+ * @deprecated Use findContact() for lookups and createContact() for explicit creation
+ * Kept for backward compatibility - will auto-create contacts
  * 
  * @param {string} tenantId - Tenant ID
  * @param {Object} identifiers - Contact identifiers
@@ -21,7 +121,7 @@ const { pool } = require('../config/db');
  * @param {string} metadata.companyName - Company name
  * @returns {Object} { contact, isNew, identifiersAdded }
  */
-async function findOrCreateContact(tenantId, identifiers = {}, metadata = {}) {
+async function findOrCreateContactLegacy(tenantId, identifiers = {}, metadata = {}) {
     const { email, phone, visitorId } = identifiers;
     const { name, source, companyName } = metadata;
 
@@ -275,7 +375,15 @@ async function mergeContacts(tenantId, primaryContactId, secondaryContactId, mer
 }
 
 module.exports = {
-    findOrCreateContact,
+    // New functions (preferred)
+    findContact,              // Lookup only - returns null if not found
+    createContact,            // Explicit creation only
+    
+    // Legacy function (backward compatibility)
+    findOrCreateContactLegacy,
+    findOrCreateContact: findOrCreateContactLegacy, // Alias for existing code
+    
+    // Utility functions
     getContactIdentifiers,
     mergeContacts,
     normalizePhone

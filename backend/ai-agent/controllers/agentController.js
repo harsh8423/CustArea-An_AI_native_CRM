@@ -9,11 +9,9 @@ const {
     KnowledgeSource,
     KnowledgeChunk,
     Guidance,
-    Attribute,
     Guardrail,
     EscalationRule,
     EscalationGuidance,
-    ATTRIBUTE_TEMPLATES,
     GUARDRAIL_TEMPLATES
 } = require('../models');
 const {
@@ -61,10 +59,9 @@ async function updateAgent(req, res) {
         const tenantId = req.user.tenantId;
         const updates = req.body;
 
-        // Filter valid fields
+        // Filter valid fields - removed LLM config fields (llmProvider, llmModel, temperature, maxTokens, isActive)
         const allowedFields = [
-            'name', 'description', 'avatar', 'llmProvider', 'llmModel',
-            'temperature', 'maxTokens', 'systemPrompt', 'isActive',
+            'name', 'description', 'avatar', 'systemPrompt',
             'enabledChannels', 'autoReply', 'welcomeMessage', 'fallbackMessage'
         ];
 
@@ -283,85 +280,6 @@ async function deleteGuidance(req, res) {
     }
 }
 
-// ================== ATTRIBUTES ==================
-
-async function createAttribute(req, res) {
-    try {
-        const tenantId = req.user.tenantId;
-        const agent = await getAgentForTenant(tenantId);
-        const { name, description, purpose, values, detectionMethod } = req.body;
-
-        const attribute = await Attribute.create({
-            tenantId,
-            agentId: agent._id,
-            name,
-            description,
-            purpose,
-            values,
-            detectionMethod
-        });
-
-        res.status(201).json(attribute);
-    } catch (error) {
-        console.error('Error creating attribute:', error);
-        res.status(500).json({ error: 'Failed to create attribute' });
-    }
-}
-
-async function getAttributes(req, res) {
-    try {
-        const tenantId = req.user.tenantId;
-        const { purpose } = req.query;
-
-        const filter = { tenantId };
-        if (purpose) filter.purpose = purpose;
-
-        const attributes = await Attribute.find(filter).sort({ name: 1 });
-        res.json(attributes);
-    } catch (error) {
-        console.error('Error getting attributes:', error);
-        res.status(500).json({ error: 'Failed to get attributes' });
-    }
-}
-
-async function getAttributeTemplates(req, res) {
-    res.json(ATTRIBUTE_TEMPLATES);
-}
-
-async function updateAttribute(req, res) {
-    try {
-        const tenantId = req.user.tenantId;
-        const { id } = req.params;
-
-        const attribute = await Attribute.findOneAndUpdate(
-            { _id: id, tenantId },
-            req.body,
-            { new: true }
-        );
-
-        if (!attribute) {
-            return res.status(404).json({ error: 'Attribute not found' });
-        }
-
-        res.json(attribute);
-    } catch (error) {
-        console.error('Error updating attribute:', error);
-        res.status(500).json({ error: 'Failed to update attribute' });
-    }
-}
-
-async function deleteAttribute(req, res) {
-    try {
-        const tenantId = req.user.tenantId;
-        const { id } = req.params;
-
-        await Attribute.deleteOne({ _id: id, tenantId });
-        res.json({ success: true });
-    } catch (error) {
-        console.error('Error deleting attribute:', error);
-        res.status(500).json({ error: 'Failed to delete attribute' });
-    }
-}
 
 // ================== GUARDRAILS ==================
 
@@ -569,11 +487,10 @@ async function getStatus(req, res) {
         const tenantId = req.user.tenantId;
         const agent = await getAgentForTenant(tenantId);
 
-        const [sourceCount, chunkCount, guidanceCount, attributeCount, guardrailCount] = await Promise.all([
+        const [sourceCount, chunkCount, guidanceCount, guardrailCount] = await Promise.all([
             KnowledgeSource.countDocuments({ tenantId, isDeleted: false }),
             KnowledgeChunk.countDocuments({ tenantId }),
             Guidance.countDocuments({ tenantId, isActive: true }),
-            Attribute.countDocuments({ tenantId, isActive: true }),
             Guardrail.countDocuments({ tenantId, isActive: true })
         ]);
 
@@ -595,7 +512,6 @@ async function getStatus(req, res) {
                 knowledgeSources: sourceCount,
                 knowledgeChunks: chunkCount,
                 guidances: guidanceCount,
-                attributes: attributeCount,
                 guardrails: guardrailCount
             },
             vectorIndex: vectorIndexStatus
@@ -618,11 +534,6 @@ module.exports = {
     getGuidances,
     updateGuidance,
     deleteGuidance,
-    createAttribute,
-    getAttributes,
-    getAttributeTemplates,
-    updateAttribute,
-    deleteAttribute,
     createGuardrail,
     getGuardrails,
     getGuardrailTemplates,

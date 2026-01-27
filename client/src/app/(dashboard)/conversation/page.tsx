@@ -1,23 +1,29 @@
 "use client";
 
+import { useFeatures } from "@/contexts/FeatureContext";
+import { ComposeEmailModal } from "@/components/conversation/ComposeEmailModal";
+import { MessageRenderer } from "@/components/conversation/MessageRenderer";
+import { EmailComposer } from "@/components/conversation/EmailComposer";
+import { FilterModal } from "@/components/conversation/FilterModal";
+import { UnknownContactIndicator } from "@/components/conversation/UnknownContactIndicator";
+
 import { useState, useEffect, useCallback, useRef } from "react";
 import {
     Mail, MessageCircle, Phone, Search, MoreHorizontal,
     Send, Paperclip, Smile, Star, ChevronDown, ChevronUp,
     User, Tag, Edit, MessageSquare, RefreshCw, Check, Sparkles,
-    Ticket, X, Zap
+    Ticket, X, Zap, Filter as FilterIcon
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import dynamic from 'next/dynamic';
 
-// Dynamic import PhoneModal to avoid SSR issues with Twilio SDK
-const PhoneModal = dynamic(() => import('@/components/PhoneModal'), { ssr: false });
+
 
 interface Conversation {
     id: string;
     tenant_id: string;
-    contact_id: string;
+    contact_id: string | null;  // NULL for unknown senders
     channel: string;
     channel_contact_id: string;
     status: string;
@@ -31,6 +37,10 @@ interface Conversation {
     contact_email: string | null;
     assigned_to_name: string | null;
     ticket_id?: string | null;  // Link to ticket if exists
+    // NEW: Unknown sender fields
+    sender_display_name?: string;
+    sender_identifier_type?: string;
+    sender_identifier_value?: string;
 }
 
 interface Message {
@@ -69,6 +79,7 @@ const CHANNEL_BG: Record<string, string> = {
 };
 
 export default function ConversationPage() {
+    const { hasFeature } = useFeatures();
     const [conversations, setConversations] = useState<Conversation[]>([]);
     const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
     const [messages, setMessages] = useState<Message[]>([]);
@@ -81,8 +92,22 @@ export default function ConversationPage() {
     const [showDetails, setShowDetails] = useState(true);
     const [stats, setStats] = useState<any>(null);
     const [detailsTab, setDetailsTab] = useState<"details" | "copilot">("details");
-    const [showPhoneModal, setShowPhoneModal] = useState(false);
+
+    const [showComposeEmailModal, setShowComposeEmailModal] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
+
+    // Filter state
+    const [showFilterModal, setShowFilterModal] = useState(false);
+    const [filters, setFilters] = useState<{
+        channel: 'all' | 'email' | 'whatsapp' | 'widget';
+        mailbox: string | null;
+        status: string | null;
+    }>({
+        channel: 'all',
+        mailbox: null,
+        status: null
+    });
+    const [mailboxes, setMailboxes] = useState<Array<{ id: string; email: string; description?: string }>>([]);
 
     // Create ticket from conversation state
     const [showCreateTicketModal, setShowCreateTicketModal] = useState(false);
@@ -94,6 +119,32 @@ export default function ConversationPage() {
     });
     const [creatingTicket, setCreatingTicket] = useState(false);
 
+    // Fetch mailboxes on mount
+    useEffect(() => {
+        const fetchMailboxes = async () => {
+            try {
+                // Use the same API as ComposeEmailModal
+                const res = await api.conversationEmail.getSenderAddresses();
+                console.log('[Conversation] Sender addresses response:', res);
+
+                const addresses = res.senderAddresses || [];
+                console.log('[Conversation] Sender addresses:', addresses);
+
+                // Transform to match our mailbox interface
+                const mailboxList = addresses.map((addr: any) => ({
+                    id: addr.connectionId || addr.identityId || addr.email,
+                    email: addr.email,
+                    description: addr.displayName
+                }));
+
+                setMailboxes(mailboxList);
+            } catch (err) {
+                console.error("Failed to fetch mailboxes:", err);
+            }
+        };
+        fetchMailboxes();
+    }, []);
+
     const fetchConversations = useCallback(async () => {
         setLoading(true);
         try {
@@ -102,7 +153,11 @@ export default function ConversationPage() {
                 api.conversations.getStats(),
                 api.macros.list(true)
             ]);
-            setConversations(convRes.conversations || []);
+            // Filter out phone conversations - they have their own dedicated page
+            const nonPhoneConversations = (convRes.conversations || []).filter(
+                (conv: Conversation) => conv.channel !== 'phone'
+            );
+            setConversations(nonPhoneConversations);
             setStats(statsRes.stats);
             setAvailableMacros(macrosRes.macros || []);
         } catch (err) {
@@ -236,14 +291,35 @@ export default function ConversationPage() {
     };
 
     const filteredConversations = conversations.filter(conv => {
-        if (!searchQuery) return true;
-        const search = searchQuery.toLowerCase();
-        return (
-            (conv.contact_name?.toLowerCase().includes(search)) ||
-            (conv.contact_email?.toLowerCase().includes(search)) ||
-            (conv.subject?.toLowerCase().includes(search)) ||
-            (conv.channel_contact_id?.toLowerCase().includes(search))
-        );
+        // Channel filter
+        if (filters.channel !== 'all' && conv.channel !== filters.channel) {
+            return false;
+        }
+
+        // Mailbox filter (only for email conversations)
+        if (filters.mailbox && conv.channel === 'email') {
+            if (conv.channel_contact_id !== filters.mailbox) {
+                return false;
+            }
+        }
+
+        // Status filter
+        if (filters.status && conv.status !== filters.status) {
+            return false;
+        }
+
+        // Search filter
+        if (searchQuery) {
+            const search = searchQuery.toLowerCase();
+            return (
+                (conv.contact_name?.toLowerCase().includes(search)) ||
+                (conv.contact_email?.toLowerCase().includes(search)) ||
+                (conv.subject?.toLowerCase().includes(search)) ||
+                (conv.channel_contact_id?.toLowerCase().includes(search))
+            );
+        }
+
+        return true;
     });
 
     const tabCounts = {
@@ -269,11 +345,11 @@ export default function ConversationPage() {
                             </div>
                             <div className="flex items-center gap-2">
                                 <button
-                                    onClick={() => setShowPhoneModal(true)}
-                                    className="p-2 bg-gradient-to-r from-blue-500 to-indigo-600 hover:opacity-90 text-white rounded-xl transition-all duration-200"
-                                    title="Make a call"
+                                    onClick={() => setShowComposeEmailModal(true)}
+                                    className="p-2 bg-gradient-to-r from-orange-500 to-orange-600 hover:opacity-90 text-white rounded-xl transition-all duration-200"
+                                    title="Compose email"
                                 >
-                                    <Phone className="h-4 w-4" />
+                                    <Mail className="h-4 w-4" />
                                 </button>
                                 <button
                                     onClick={fetchConversations}
@@ -314,17 +390,36 @@ export default function ConversationPage() {
                         </div>
                     </div>
 
-                    {/* Search */}
+                    {/* Search and Filter */}
                     <div className="px-5 pb-3">
-                        <div className="relative">
-                            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-300" />
-                            <input
-                                type="text"
-                                placeholder="Search conversations..."
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                                className="w-full pl-10 pr-4 py-2.5 text-sm bg-gray-50 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-100 focus:bg-white transition-all duration-200 placeholder:text-gray-300"
-                            />
+                        <div className="flex items-center gap-2">
+                            <div className="relative flex-1">
+                                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-300" />
+                                <input
+                                    type="text"
+                                    placeholder="Search conversations..."
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    className="w-full pl-10 pr-4 py-2.5 text-sm bg-gray-50 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-100 focus:bg-white transition-all duration-200 placeholder:text-gray-300"
+                                />
+                            </div>
+                            <button
+                                onClick={() => setShowFilterModal(true)}
+                                className={cn(
+                                    "relative p-2.5 rounded-xl transition-all duration-200",
+                                    (filters.channel !== 'all' || filters.mailbox || filters.status)
+                                        ? "bg-gradient-to-r from-blue-500 to-indigo-600 text-white shadow-sm"
+                                        : "bg-gray-50 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                                )}
+                                title="Filter conversations"
+                            >
+                                <FilterIcon className="h-4 w-4" />
+                                {(filters.channel !== 'all' || filters.mailbox || filters.status) && (
+                                    <span className="absolute -top-1 -right-1 h-4 w-4 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                                        {(filters.channel !== 'all' ? 1 : 0) + (filters.mailbox ? 1 : 0) + (filters.status ? 1 : 0)}
+                                    </span>
+                                )}
+                            </button>
                         </div>
                     </div>
 
@@ -385,7 +480,7 @@ export default function ConversationPage() {
                                                         "font-medium truncate text-sm",
                                                         isSelected ? "text-gray-900" : "text-gray-700"
                                                     )}>
-                                                        {conv.contact_name || conv.channel_contact_id || "Unknown"}
+                                                        {conv.contact_name || conv.sender_display_name || conv.channel_contact_id || "Unknown"}
                                                     </span>
                                                     <span className="text-[10px] text-gray-400 shrink-0 font-medium">
                                                         {conv.last_message_at ? formatTime(conv.last_message_at) : formatTime(conv.created_at)}
@@ -394,6 +489,15 @@ export default function ConversationPage() {
                                                 <p className="text-xs text-gray-400 truncate mt-1">
                                                     {conv.subject || `${conv.channel.charAt(0).toUpperCase() + conv.channel.slice(1)} conversation`}
                                                 </p>
+                                                {/* Unknown contact badge in list */}
+                                                {!conv.contact_id && conv.sender_display_name && (
+                                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-50 text-amber-600 text-[10px] font-medium mt-1.5">
+                                                        <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20">
+                                                            <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                                                        </svg>
+                                                        Not in Contact
+                                                    </span>
+                                                )}
                                                 {conv.ticket_id && (
                                                     <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-rose-50 text-rose-600 text-[10px] font-medium mt-1.5">
                                                         <Ticket className="h-2.5 w-2.5" />
@@ -414,72 +518,82 @@ export default function ConversationPage() {
                     {selectedConversation ? (
                         <>
                             {/* Thread Header */}
-                            <div className="px-6 py-4 flex items-center justify-between bg-gradient-to-r from-white to-gray-50/50">
-                                <div className="flex items-center gap-4">
-                                    <div className={cn(
-                                        "h-10 w-10 rounded-xl flex items-center justify-center text-white text-sm font-semibold shadow-sm",
-                                        CHANNEL_BG[selectedConversation.channel] || "bg-gray-500"
-                                    )}>
-                                        {selectedConversation.contact_name?.charAt(0).toUpperCase() || "?"}
-                                    </div>
-                                    <div>
-                                        <h3 className="font-semibold text-gray-900">
-                                            {selectedConversation.contact_name || selectedConversation.channel_contact_id}
-                                        </h3>
-                                        <div className="flex items-center gap-2 mt-0.5">
-                                            <span className={cn(
-                                                "inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium",
-                                                selectedConversation.channel === 'email' && "bg-orange-50 text-orange-600",
-                                                selectedConversation.channel === 'whatsapp' && "bg-green-50 text-green-600",
-                                                selectedConversation.channel === 'widget' && "bg-purple-50 text-purple-600",
-                                                selectedConversation.channel === 'phone' && "bg-blue-50 text-blue-600",
-                                            )}>
-                                                {(() => {
-                                                    const Icon = getChannelIcon(selectedConversation.channel);
-                                                    return <Icon className="h-2.5 w-2.5" />;
-                                                })()}
-                                                {selectedConversation.channel.charAt(0).toUpperCase() + selectedConversation.channel.slice(1)}
-                                            </span>
-                                            <span className={cn(
-                                                "px-2 py-0.5 rounded-md text-[10px] font-medium",
-                                                selectedConversation.status === 'open' && "bg-emerald-50 text-emerald-600",
-                                                selectedConversation.status === 'pending' && "bg-amber-50 text-amber-600",
-                                                selectedConversation.status === 'resolved' && "bg-gray-100 text-gray-500",
-                                            )}>
-                                                {selectedConversation.status.charAt(0).toUpperCase() + selectedConversation.status.slice(1)}
-                                            </span>
+                            <div className="px-6 py-4 bg-gradient-to-r from-white to-gray-50/50">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-4">
+                                        <div className={cn(
+                                            "h-10 w-10 rounded-xl flex items-center justify-center text-white text-sm font-semibold shadow-sm",
+                                            CHANNEL_BG[selectedConversation.channel] || "bg-gray-500"
+                                        )}>
+                                            {selectedConversation.contact_name?.charAt(0).toUpperCase() || selectedConversation.sender_display_name?.charAt(0).toUpperCase() || "?"}
+                                        </div>
+                                        <div>
+                                            <h3 className="font-semibold text-gray-900">
+                                                {selectedConversation.contact_name || selectedConversation.sender_display_name || selectedConversation.channel_contact_id}
+                                            </h3>
+                                            <div className="flex items-center gap-2 mt-0.5">
+                                                <span className={cn(
+                                                    "inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium",
+                                                    selectedConversation.channel === 'email' && "bg-orange-50 text-orange-600",
+                                                    selectedConversation.channel === 'whatsapp' && "bg-green-50 text-green-600",
+                                                    selectedConversation.channel === 'widget' && "bg-purple-50 text-purple-600",
+                                                    selectedConversation.channel === 'phone' && "bg-blue-50 text-blue-600",
+                                                )}>
+                                                    {(() => {
+                                                        const Icon = getChannelIcon(selectedConversation.channel);
+                                                        return <Icon className="h-2.5 w-2.5" />;
+                                                    })()}
+                                                    {selectedConversation.channel.charAt(0).toUpperCase() + selectedConversation.channel.slice(1)}
+                                                </span>
+                                                <span className={cn(
+                                                    "px-2 py-0.5 rounded-md text-[10px] font-medium",
+                                                    selectedConversation.status === 'open' && "bg-emerald-50 text-emerald-600",
+                                                    selectedConversation.status === 'pending' && "bg-amber-50 text-amber-600",
+                                                    selectedConversation.status === 'resolved' && "bg-gray-100 text-gray-500",
+                                                )}>
+                                                    {selectedConversation.status.charAt(0).toUpperCase() + selectedConversation.status.slice(1)}
+                                                </span>
+                                            </div>
                                         </div>
                                     </div>
-                                </div>
-                                <div className="flex items-center gap-1">
-                                    <button
-                                        onClick={openCreateTicketModal}
-                                        className="flex items-center gap-1.5 px-3 py-2 bg-gradient-to-r from-rose-500 to-pink-600 text-white rounded-xl hover:opacity-90 transition-all duration-200 text-xs font-medium"
-                                        title="Create ticket from this conversation"
-                                    >
-                                        <Ticket className="h-3.5 w-3.5" />
-                                        <span>Create Ticket</span>
-                                    </button>
-                                    <button className="p-2.5 hover:bg-gray-100 rounded-xl transition-all duration-200">
-                                        <Star className="h-4 w-4 text-gray-400" />
-                                    </button>
-                                    <button
-                                        onClick={() => setShowDetails(!showDetails)}
-                                        className={cn(
-                                            "p-2.5 rounded-xl transition-all duration-200",
-                                            showDetails ? "bg-blue-50 text-blue-600" : "hover:bg-gray-100 text-gray-400"
+                                    <div className="flex items-center gap-1">
+                                        {hasFeature('ticketing') && (
+                                            <button
+                                                onClick={openCreateTicketModal}
+                                                className="flex items-center gap-1.5 px-3 py-2 bg-gradient-to-r from-rose-500 to-pink-600 text-white rounded-xl hover:opacity-90 transition-all duration-200 text-xs font-medium"
+                                                title="Create ticket from this conversation"
+                                            >
+                                                <Ticket className="h-3.5 w-3.5" />
+                                                <span>Create Ticket</span>
+                                            </button>
                                         )}
-                                    >
-                                        <User className="h-4 w-4" />
-                                    </button>
-                                    <button className="p-2.5 hover:bg-gray-100 rounded-xl transition-all duration-200">
-                                        <MoreHorizontal className="h-4 w-4 text-gray-400" />
-                                    </button>
+                                        <button className="p-2.5 hover:bg-gray-100 rounded-xl transition-all duration-200">
+                                            <Star className="h-4 w-4 text-gray-400" />
+                                        </button>
+                                        <button
+                                            onClick={() => setShowDetails(!showDetails)}
+                                            className={cn(
+                                                "p-2.5 rounded-xl transition-all duration-200",
+                                                showDetails ? "bg-blue-50 text-blue-600" : "hover:bg-gray-100 text-gray-400"
+                                            )}
+                                        >
+                                            <User className="h-4 w-4" />
+                                        </button>
+                                        <button className="p-2.5 hover:bg-gray-100 rounded-xl transition-all duration-200">
+                                            <MoreHorizontal className="h-4 w-4 text-gray-400" />
+                                        </button>
+                                    </div>
                                 </div>
+                                {/* Unknown Contact Indicator - shown below header */}
+                                <UnknownContactIndicator
+                                    conversation={selectedConversation}
+                                    onContactAdded={() => fetchConversations()}
+                                    className="mt-4"
+                                />
                             </div>
 
                             {/* Messages */}
-                            <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-gradient-to-b from-gray-50/30 to-gray-50/50">
+                            <div className="flex-1 overflow-y-auto p-6 bg-gradient-to-b from-gray-50/30 to-gray-50/50">
                                 {loadingMessages ? (
                                     <div className="flex items-center justify-center h-full">
                                         <div className="flex flex-col items-center gap-2">
@@ -496,99 +610,60 @@ export default function ConversationPage() {
                                         <p className="text-xs text-gray-400 mt-1">Start the conversation below</p>
                                     </div>
                                 ) : (
-                                    messages.map((msg) => {
-                                        const isOutbound = msg.direction === "outbound";
-                                        const isAI = msg.role === "ai";
-                                        return (
-                                            <div
-                                                key={msg.id}
-                                                className={cn(
-                                                    "flex",
-                                                    isOutbound ? "justify-end" : "justify-start"
-                                                )}
-                                            >
-                                                <div className={cn(
-                                                    "max-w-[70%] rounded-2xl px-4 py-3 shadow-sm",
-                                                    isOutbound
-                                                        ? "bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-br-md"
-                                                        : "bg-white text-gray-800 rounded-bl-md"
-                                                )}>
-                                                    {isAI && !isOutbound && (
-                                                        <div className="flex items-center gap-1.5 mb-2 text-xs text-purple-500 font-medium">
-                                                            <Sparkles className="h-3 w-3" />
-                                                            AI Assistant
-                                                        </div>
-                                                    )}
-                                                    {msg.content_html ? (
-                                                        <div
-                                                            className="text-sm prose prose-sm max-w-none"
-                                                            dangerouslySetInnerHTML={{ __html: msg.content_html }}
-                                                        />
-                                                    ) : (
-                                                        <p className="text-sm whitespace-pre-wrap leading-relaxed">{msg.content_text}</p>
-                                                    )}
-                                                    <div className={cn(
-                                                        "flex items-center gap-1.5 mt-2",
-                                                        isOutbound ? "justify-end" : "justify-start"
-                                                    )}>
-                                                        <span className={cn(
-                                                            "text-[10px] font-medium",
-                                                            isOutbound ? "text-blue-200" : "text-gray-300"
-                                                        )}>
-                                                            {formatTime(msg.created_at)}
-                                                        </span>
-                                                        {isOutbound && msg.status === "delivered" && (
-                                                            <Check className="h-3 w-3 text-blue-200" />
-                                                        )}
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        );
-                                    })
+                                    <MessageRenderer conversation={selectedConversation} messages={messages} />
                                 )}
                                 <div ref={messagesEndRef} />
                             </div>
 
-                            {/* Composer */}
-                            <div className="px-6 py-4 bg-white">
-                                <div className="flex items-end gap-3">
-                                    <div className="flex-1 relative">
-                                        <textarea
-                                            value={newMessage}
-                                            onChange={(e) => setNewMessage(e.target.value)}
-                                            onKeyDown={(e) => {
-                                                if (e.key === "Enter" && !e.shiftKey) {
-                                                    e.preventDefault();
-                                                    handleSendMessage();
-                                                }
-                                            }}
-                                            placeholder="Type your message..."
-                                            rows={1}
-                                            className="w-full px-4 py-3.5 pr-24 text-sm bg-gray-50 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-100 focus:bg-white resize-none transition-all duration-200 placeholder:text-gray-300"
-                                        />
-                                        <div className="absolute right-3 bottom-3 flex items-center gap-0.5">
-                                            <button className="p-2 hover:bg-gray-100 rounded-lg transition-all duration-200">
-                                                <Paperclip className="h-4 w-4 text-gray-400" />
-                                            </button>
-                                            <button className="p-2 hover:bg-gray-100 rounded-lg transition-all duration-200">
-                                                <Smile className="h-4 w-4 text-gray-400" />
-                                            </button>
+                            {/* Composer - Email vs Other Channels */}
+                            <div className="px-6 py-4 bg-white border-t border-gray-100">
+                                {selectedConversation.channel === 'email' ? (
+                                    <EmailComposer
+                                        conversationId={selectedConversation.id}
+                                        defaultSubject={selectedConversation.subject}
+                                        recipientEmail={selectedConversation.contact_email || selectedConversation.channel_contact_id || ''}
+                                        onSent={() => fetchMessages(selectedConversation.id)}
+                                    />
+                                ) : (
+                                    <div className="flex items-end gap-3">
+                                        <div className="flex-1 relative">
+                                            <textarea
+                                                value={newMessage}
+                                                onChange={(e) => setNewMessage(e.target.value)}
+                                                onKeyDown={(e) => {
+                                                    if (e.key === "Enter" && !e.shiftKey) {
+                                                        e.preventDefault();
+                                                        handleSendMessage();
+                                                    }
+                                                }}
+                                                placeholder="Type your message..."
+                                                rows={1}
+                                                className="w-full px-4 py-3.5 pr-24 text-sm bg-gray-50 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-100 focus:bg-white resize-none transition-all duration-200 placeholder:text-gray-300"
+                                            />
+                                            <div className="absolute right-3 bottom-3 flex items-center gap-0.5">
+                                                <button className="p-2 hover:bg-gray-100 rounded-lg transition-all duration-200">
+                                                    <Paperclip className="h-4 w-4 text-gray-400" />
+                                                </button>
+                                                <button className="p-2 hover:bg-gray-100 rounded-lg transition-all duration-200">
+                                                    <Smile className="h-4 w-4 text-gray-400" />
+                                                </button>
+                                            </div>
                                         </div>
+                                        <button
+                                            onClick={handleSendMessage}
+                                            disabled={!newMessage.trim() || sending}
+                                            className="px-5 py-3.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-2xl hover:from-blue-600 hover:to-blue-700 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-sm shadow-blue-500/20"
+                                        >
+                                            {sending ? (
+                                                <RefreshCw className="h-4 w-4 animate-spin" />
+                                            ) : (
+                                                <>
+                                                    <Send className="h-4 w-4" />
+                                                </>
+                                            )}
+                                        </button>
                                     </div>
-                                    <button
-                                        onClick={handleSendMessage}
-                                        disabled={!newMessage.trim() || sending}
-                                        className="px-5 py-3.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-2xl hover:from-blue-600 hover:to-blue-700 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-sm shadow-blue-500/20"
-                                    >
-                                        {sending ? (
-                                            <RefreshCw className="h-4 w-4 animate-spin" />
-                                        ) : (
-                                            <>
-                                                <Send className="h-4 w-4" />
-                                            </>
-                                        )}
-                                    </button>
-                                </div>
+                                )}
                             </div>
                         </>
                     ) : (
@@ -752,11 +827,14 @@ export default function ConversationPage() {
                 )}
             </div>
 
-            {/* Phone Modal - Always mounted to handle incoming calls */}
-            <PhoneModal
-                isOpen={showPhoneModal}
-                onClose={() => setShowPhoneModal(false)}
+            {/* Compose Email Modal */}
+            <ComposeEmailModal
+                isOpen={showComposeEmailModal}
+                onClose={() => setShowComposeEmailModal(false)}
+                onSuccess={fetchConversations}
             />
+
+
 
             {/* Create Ticket Modal */}
             {showCreateTicketModal && selectedConversation && (
@@ -864,6 +942,15 @@ export default function ConversationPage() {
                     </div>
                 </div>
             )}
+
+            {/* Filter Modal */}
+            <FilterModal
+                isOpen={showFilterModal}
+                onClose={() => setShowFilterModal(false)}
+                filters={filters}
+                onApplyFilters={(newFilters) => setFilters(newFilters)}
+                mailboxes={mailboxes}
+            />
         </div>
     );
 }

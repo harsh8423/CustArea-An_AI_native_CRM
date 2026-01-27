@@ -42,9 +42,9 @@ const agentSchema = new mongoose.Schema({
     },
     maxTokens: {
         type: Number,
-        default: 1024,
+        default: 4096,
         min: 100,
-        max: 4096
+        max: 16384
     },
 
     // System prompt (base instructions)

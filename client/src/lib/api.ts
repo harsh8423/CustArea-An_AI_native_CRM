@@ -9,6 +9,33 @@ interface AuthResponse {
 
 export const api = {
     auth: {
+        // ==== MAGIC LINK AUTH ====
+        signupWithOTP: async (data: { email: string; companyName: string }): Promise<AuthResponse> => {
+            const res = await fetch(`${API_BASE_URL}/v2/auth/signup-with-otp`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify(data),
+            });
+            return res.json();
+        },
+        getCurrentUser: async (): Promise<any> => {
+            const token = localStorage.getItem("token");
+            const res = await fetch(`${API_BASE_URL}/v2/auth/me`, {
+                headers: {
+                    Authorization: `Bearer ${token}`
+                }
+            });
+            return res.json();
+        },
+        signout: async (): Promise<void> => {
+            localStorage.removeItem("token");
+            localStorage.removeItem("user");
+            document.cookie = "token=; path=/; max-age=0";
+        },
+
+        // ==== LEGACY PASSWORD AUTH (BACKWARD COMPATIBILITY) ====
         register: async (data: any): Promise<AuthResponse> => {
             const res = await fetch(`${API_BASE_URL}/auth/register`, {
                 method: "POST",
@@ -716,6 +743,128 @@ export const api = {
             const res = await fetch(`${API_BASE_URL}/macros/${id}`, {
                 method: "DELETE",
                 headers: { Authorization: `Bearer ${token}` }
+            });
+            return res.json();
+        }
+    },
+    gmail: {
+        authorize: async () => {
+            const token = localStorage.getItem("token");
+            const res = await fetch(`${API_BASE_URL}/settings/email/gmail/authorize`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            return res.json();
+        },
+        getStatus: async () => {
+            const token = localStorage.getItem("token");
+            const res = await fetch(`${API_BASE_URL}/settings/email/gmail/status`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            return res.json();
+        },
+        disconnect: async (connectionId: string) => {
+            const token = localStorage.getItem("token");
+            const res = await fetch(`${API_BASE_URL}/settings/email/gmail/disconnect/${connectionId}`, {
+                method: "DELETE",
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            return res.json();
+        },
+        setDefault: async (connectionId: string) => {
+            const token = localStorage.getItem("token");
+            const res = await fetch(`${API_BASE_URL}/settings/email/gmail/set-default/${connectionId}`, {
+                method: "POST",
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            return res.json();
+        }
+    },
+    outlook: {
+        authorize: async () => {
+            const token = localStorage.getItem("token");
+            const res = await fetch(`${API_BASE_URL}/settings/email/outlook/authorize`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            return res.json();
+        },
+        getStatus: async () => {
+            const token = localStorage.getItem("token");
+            const res = await fetch(`${API_BASE_URL}/settings/email/outlook/status`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            return res.json();
+        },
+        disconnect: async (connectionId: string) => {
+            const token = localStorage.getItem("token");
+            const res = await fetch(`${API_BASE_URL}/settings/email/outlook/disconnect/${connectionId}`, {
+                method: "DELETE",
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            return res.json();
+        },
+        setDefault: async (connectionId: string) => {
+            const token = localStorage.getItem("token");
+            const res = await fetch(`${API_BASE_URL}/settings/email/outlook/set-default/${connectionId}`, {
+                method: "POST",
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            return res.json();
+        }
+    },
+    features: {
+        getAll: async () => {
+            const res = await fetch(`${API_BASE_URL}/features`);
+            return res.json();
+        },
+        getTenantFeatures: async () => {
+            const token = localStorage.getItem("token");
+            const res = await fetch(`${API_BASE_URL}/features/tenant`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            return res.json();
+        },
+        enable: async (featureKey: string) => {
+            const token = localStorage.getItem("token");
+            const res = await fetch(`${API_BASE_URL}/features/${featureKey}/enable`, {
+                method: "POST",
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            return res.json();
+        },
+        disable: async (featureKey: string) => {
+            const token = localStorage.getItem("token");
+            const res = await fetch(`${API_BASE_URL}/features/${featureKey}/disable`, {
+                method: "POST",
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            return res.json();
+        }
+    },
+    conversationEmail: {
+        getSenderAddresses: async () => {
+            const token = localStorage.getItem("token");
+            const res = await fetch(`${API_BASE_URL}/conversation-email/sender-addresses`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            return res.json();
+        },
+        sendEmail: async (data: {
+            from: string;
+            to: string;
+            subject: string;
+            body: string;
+            cc?: string;
+            bcc?: string;
+            conversationId?: string;
+        }) => {
+            const token = localStorage.getItem("token");
+            const res = await fetch(`${API_BASE_URL}/conversation-email/send-conversation`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`
+                },
+                body: JSON.stringify(data)
             });
             return res.json();
         }

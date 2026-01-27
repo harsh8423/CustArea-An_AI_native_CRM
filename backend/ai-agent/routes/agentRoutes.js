@@ -27,12 +27,6 @@ router.post('/guidance', controller.createGuidance);
 router.put('/guidance/:id', controller.updateGuidance);
 router.delete('/guidance/:id', controller.deleteGuidance);
 
-// ================== ATTRIBUTES ==================
-router.get('/attributes', controller.getAttributes);
-router.get('/attributes/templates', controller.getAttributeTemplates);
-router.post('/attributes', controller.createAttribute);
-router.put('/attributes/:id', controller.updateAttribute);
-router.delete('/attributes/:id', controller.deleteAttribute);
 
 // ================== GUARDRAILS ==================
 router.get('/guardrails', controller.getGuardrails);

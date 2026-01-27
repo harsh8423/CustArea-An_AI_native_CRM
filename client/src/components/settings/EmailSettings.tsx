@@ -51,11 +51,31 @@ interface DNSRecords {
     spf: { type: string; name: string; value: string };
 }
 
+interface GmailConnection {
+    id: string;
+    provider_type: string;
+    email: string;
+    is_default: boolean;
+    is_active: boolean;
+    expires_at?: string;
+}
+
+interface OutlookConnection {
+    id: string;
+    provider_type: string;
+    email: string;
+    is_default: boolean;
+    is_active: boolean;
+    expires_at?: string;
+}
+
 export function EmailSettings() {
     const [identities, setIdentities] = useState<SESIdentity[]>([]);
     const [allowedFrom, setAllowedFrom] = useState<AllowedEmail[]>([]);
     const [allowedInbound, setAllowedInbound] = useState<AllowedInbound[]>([]);
     const [outboundEmails, setOutboundEmails] = useState<OutboundEmail[]>([]);
+    const [gmailConnections, setGmailConnections] = useState<GmailConnection[]>([]);
+    const [outlookConnections, setOutlookConnections] = useState<OutlookConnection[]>([]);
     const [loading, setLoading] = useState(true);
 
     // Form states
@@ -71,6 +91,8 @@ export function EmailSettings() {
 
     // Section collapse states
     const [expandedSections, setExpandedSections] = useState({
+        gmail: true,
+        outlook: true,
         domains: true,
         senders: true,
         inbound: true,
@@ -84,17 +106,21 @@ export function EmailSettings() {
     const fetchData = useCallback(async () => {
         setLoading(true);
         try {
-            const [identitiesRes, allowedFromRes, allowedInboundRes, outboundRes] = await Promise.all([
+            const [identitiesRes, allowedFromRes, allowedInboundRes, outboundRes, gmailRes, outlookRes] = await Promise.all([
                 api.email.getIdentities(),
                 api.email.getAllowedFrom(),
                 api.email.getAllowedInbound(),
-                api.email.getOutboundEmails(20)
+                api.email.getOutboundEmails(20),
+                api.gmail.getStatus().catch(() => ({ connections: [] })),
+                api.outlook.getStatus().catch(() => ({ connections: [] }))
             ]);
 
             setIdentities(identitiesRes.identities || []);
             setAllowedFrom(allowedFromRes.allowedEmails || []);
             setAllowedInbound(allowedInboundRes.allowedInbound || []);
             setOutboundEmails(outboundRes.emails || []);
+            setGmailConnections(gmailRes.connections || []);
+            setOutlookConnections(outlookRes.connections || []);
         } catch (err) {
             console.error("Failed to fetch email settings:", err);
         } finally {
@@ -221,6 +247,172 @@ export function EmailSettings() {
                     <RefreshCw className="h-4 w-4" />
                     Refresh
                 </button>
+            </div>
+
+            {/* Gmail Connection Section */}
+            <div className="bg-gray-50 rounded-xl border border-gray-200 overflow-hidden">
+                <button
+                    onClick={() => toggleSection("gmail")}
+                    className="w-full flex items-center justify-between px-4 py-3 bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-blue-100"
+                >
+                    <div className="flex items-center gap-3">
+                        <Mail className="h-5 w-5 text-blue-600" />
+                        <span className="font-medium text-gray-900">Gmail Integration</span>
+                        <span className="text-xs text-gray-500">({gmailConnections.length})</span>
+                    </div>
+                    {expandedSections.gmail ? <ChevronUp className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
+                </button>
+
+                {expandedSections.gmail && (
+                    <div className="p-4 space-y-4">
+                        <div className="flex items-center justify-between">
+                            <p className="text-sm text-gray-600">Connect your Gmail account to send and receive emails</p>
+                            <button
+                                onClick={async () => {
+                                    try {
+                                        const data = await api.gmail.authorize();
+                                        if (data.authorizationUrl) {
+                                            window.location.href = data.authorizationUrl;
+                                        }
+                                    } catch (err) {
+                                        console.error("Failed to connect Gmail:", err);
+                                    }
+                                }}
+                                className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition"
+                            >
+                                <Plus className="h-4 w-4" />
+                                Connect Gmail
+                            </button>
+                        </div>
+
+                        {gmailConnections.length > 0 ? (
+                            <div className="space-y-2">
+                                {gmailConnections.map((conn) => (
+                                    <div key={conn.id} className="flex items-center justify-between bg-white border border-gray-200 rounded-lg px-4 py-3">
+                                        <div className="flex items-center gap-3">
+                                            <Mail className="h-5 w-5 text-blue-600" />
+                                            <div>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="font-medium text-gray-900">{conn.email}</span>
+                                                    {conn.is_default && (
+                                                        <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">Default</span>
+                                                    )}
+                                                    {conn.is_active ? <Check className="h-4 w-4 text-green-500" /> : <X className="h-4 w-4 text-gray-400" />}
+                                                </div>
+                                                <p className="text-xs text-gray-500 capitalize">{conn.provider_type}</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            {!conn.is_default && (
+                                                <button
+                                                    onClick={async () => {
+                                                        try {
+                                                            await api.gmail.setDefault(conn.id);
+                                                            fetchData();
+                                                        } catch (err) {
+                                                            console.error("Failed to set default:", err);
+                                                        }
+                                                    }}
+                                                    className="px-3 py-1 text-xs text-gray-700 hover:text-gray-900 border border-gray-300 rounded-md hover:border-gray-400 transition"
+                                                >
+                                                    Set Default
+                                                </button>
+                                            )}
+                                            <button
+                                                onClick={async () => {
+                                                    if (confirm("Disconnect this Gmail account?")) {
+                                                        try {
+                                                            await api.gmail.disconnect(conn.id);
+                                                            fetchData();
+                                                        } catch (err) {
+                                                            console.error("Failed to disconnect:", err);
+                                                        }
+                                                    }
+                                                }}
+                                                className="p-2 text-red-500 hover:bg-red-50 rounded-md transition"
+                                            >
+                                                <Trash2 className="h-4 w-4" />
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <p className="text-sm text-gray-500 text-center py-4">No Gmail accounts connected yet.</p>
+                        )}
+                    </div>
+                )}
+            </div>
+
+            {/* Outlook Integration Section */}
+            <div className="bg-gray-50 rounded-xl border border-gray-200 overflow-hidden">
+                <button
+                    onClick={() => toggleSection("outlook")}
+                    className="w-full flex items-center justify-between px-4 py-3 bg-gradient-to-r from-cyan-50 to-blue-50 border-b border-blue-100"
+                >
+                    <div className="flex items-center gap-3">
+                        <Mail className="h-5 w-5 text-cyan-600" />
+                        <span className="font-medium text-gray-900">Outlook Integration</span>
+                        <span className="text-xs text-gray-500">({outlookConnections.length})</span>
+                    </div>
+                    {expandedSections.outlook ? <ChevronUp className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
+                </button>
+
+                {expandedSections.outlook && (
+                    <div className="p-4 space-y-4">
+                        <div className="flex items-center justify-between">
+                            <p className="text-sm text-gray-600">Connect your Outlook/Microsoft 365 account</p>
+                            <button
+                                onClick={async () => {
+                                    try {
+                                        const data = await api.outlook.authorize();
+                                        if (data.authorizationUrl) window.location.href = data.authorizationUrl;
+                                    } catch (err) {
+                                        console.error("Failed:", err);
+                                    }
+                                }}
+                                className="flex items-center gap-2 px-3 py-2 bg-cyan-600 text-white text-sm font-medium rounded-lg hover:bg-cyan-700 transition"
+                            >
+                                <Plus className="h-4 w-4" />
+                                Connect Outlook
+                            </button>
+                        </div>
+
+                        {outlookConnections.length > 0 ? (
+                            <div className="space-y-2">
+                                {outlookConnections.map((conn) => (
+                                    <div key={conn.id} className="flex items-center justify-between bg-white border border-gray-200 rounded-lg px-4 py-3">
+                                        <div className="flex items-center gap-3">
+                                            <Mail className="h-5 w-5 text-cyan-600" />
+                                            <div>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="font-medium text-gray-900">{conn.email}</span>
+                                                    {conn.is_default && <span className="text-xs bg-cyan-100 text-cyan-700 px-2 py-0.5 rounded-full">Default</span>}
+                                                    {conn.is_active ? <Check className="h-4 w-4 text-green-500" /> : <X className="h-4 w-4 text-gray-400" />}
+                                                </div>
+                                                <p className="text-xs text-gray-500">Outlook</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            {!conn.is_default && (
+                                                <button onClick={async () => { try { await api.outlook.setDefault(conn.id); fetchData(); } catch (err) { console.error(err); } }}
+                                                    className="px-3 py-1 text-xs text-gray-700 hover:text-gray-900 border border-gray-300 rounded-md hover:border-gray-400 transition">
+                                                    Set Default
+                                                </button>
+                                            )}
+                                            <button onClick={async () => { if (confirm("Disconnect?")) { try { await api.outlook.disconnect(conn.id); fetchData(); } catch (err) { console.error(err); } } }}
+                                                className="p-2 text-red-500 hover:bg-red-50 rounded-md transition">
+                                                <Trash2 className="h-4 w-4" />
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <p className="text-sm text-gray-500 text-center py-4">No Outlook accounts connected yet.</p>
+                        )}
+                    </div>
+                )}
             </div>
 
             {/* Domain Verification Section */}

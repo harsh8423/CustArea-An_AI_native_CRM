@@ -4,6 +4,8 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { useState } from "react"
+import { api } from "@/lib/api"
+import { useFeatures } from "@/contexts/FeatureContext"
 import {
     Bot,
     BarChart2,
@@ -30,7 +32,9 @@ import {
     Clock,
     PauseCircle,
     CheckCircle2,
-    XCircle
+    XCircle,
+    LogOut,
+    Phone
 } from "lucide-react"
 
 interface SubItem {
@@ -39,6 +43,7 @@ interface SubItem {
     icon?: any
     isStatusFilter?: boolean  // For visual grouping
     isDivider?: boolean       // To add separator line
+    subItems?: SubItem[]      // Support nested dropdowns
 }
 
 interface Route {
@@ -48,6 +53,7 @@ interface Route {
     badge?: number
     color?: string
     subItems?: SubItem[]
+    feature?: string  // Feature key required to show this route
 }
 
 const routes: Route[] = [
@@ -57,12 +63,14 @@ const routes: Route[] = [
         href: "/dashboard",
         color: "from-violet-500 to-purple-600",
         badge: 4
+        // Core feature - always visible
     },
     {
         label: "Sales",
         icon: Users,
         href: "/sales/contacts",
         color: "from-blue-500 to-cyan-500",
+        // Core feature - always visible
         subItems: [
             { label: "Contacts", href: "/sales/contacts", icon: Users },
             { label: "Leads", href: "/sales/leads", icon: Users },
@@ -74,18 +82,32 @@ const routes: Route[] = [
         icon: Megaphone,
         href: "/campaign",
         color: "from-orange-400 to-rose-500",
+        feature: "campaign"  // Optional feature
     },
     {
         label: "Conversation",
         icon: MessageSquare,
         href: "/conversation",
         color: "from-emerald-500 to-teal-600",
+        // Core feature - always visible
+    },
+    {
+        label: "Phone Calls",
+        icon: Phone,
+        href: "/phone-calls",
+        color: "from-blue-500 to-cyan-500",
+        feature: "phone_calls",  // Optional feature
+        subItems: [
+            { label: "Dialer", href: "/phone-calls?tab=dialer", icon: Phone },
+            { label: "Logs", href: "/phone-calls?tab=logs", icon: Phone },
+        ]
     },
     {
         label: "Tickets",
         icon: Ticket,
         href: "/tickets",
         color: "from-rose-500 to-pink-600",
+        feature: "ticketing",  // Optional feature
         subItems: [
             { label: "All Tickets", href: "/tickets", icon: List },
             { label: "New", href: "/tickets?status=new", icon: AlertCircle, isStatusFilter: true },
@@ -104,15 +126,35 @@ const routes: Route[] = [
         icon: GitBranch,
         href: "/workflow",
         color: "from-pink-500 to-rose-500",
+        feature: "workflow"  // Optional feature
     },
     {
         label: "AI Agent",
         icon: Bot,
         href: "/ai-agent",
         color: "from-indigo-500 to-purple-600",
+        // Core feature - always visible
         subItems: [
-            { label: "Knowledge Base", href: "/ai-agent/knowledge", icon: Book },
-            { label: "Train", href: "/ai-agent/train", icon: Hammer },
+            {
+                label: "Knowledge",
+                href: "/ai-agent/knowledge",
+                icon: Book,
+                subItems: [
+                    { label: "Base Knowledge", href: "/ai-agent/knowledge?tab=base", icon: Sparkles },
+                    { label: "Articles", href: "/ai-agent/knowledge?tab=articles", icon: Book },
+                    { label: "Documents", href: "/ai-agent/knowledge?tab=documents", icon: Book }
+                ]
+            },
+            {
+                label: "Train",
+                href: "/ai-agent/train",
+                icon: Hammer,
+                subItems: [
+                    { label: "Guidance", href: "/ai-agent/train?tab=guidance", icon: MessageSquare },
+                    { label: "Guardrails", href: "/ai-agent/train?tab=guardrails", icon: Bot },
+                    { label: "Escalation", href: "/ai-agent/train?tab=escalation", icon: AlertCircle }
+                ]
+            },
             { label: "Test", href: "/ai-agent/test", icon: PlayCircle },
             { label: "Deploy", href: "/ai-agent/deploy", icon: Rocket },
         ]
@@ -122,12 +164,16 @@ const routes: Route[] = [
         icon: BarChart2,
         href: "/report",
         color: "from-amber-500 to-orange-600",
+        feature: "reports"  // Optional feature
     },
 ]
 
 export function Sidebar() {
     const pathname = usePathname()
+    const { hasFeature } = useFeatures();
     const [activeRoute, setActiveRoute] = useState<string | null>(null)
+    const [expandedRoutes, setExpandedRoutes] = useState<Set<string>>(new Set())
+    const [expandedSubItems, setExpandedSubItems] = useState<Set<string>>(new Set())
     // Collapsed by default, expanded only for dashboard
     const [isCollapsed, setIsCollapsed] = useState(!pathname.startsWith('/dashboard'))
 
@@ -141,7 +187,32 @@ export function Sidebar() {
         }
     }
 
+    const toggleRoute = (routeLabel: string) => {
+        const newExpanded = new Set(expandedRoutes)
+        if (newExpanded.has(routeLabel)) {
+            newExpanded.delete(routeLabel)
+        } else {
+            newExpanded.add(routeLabel)
+        }
+        setExpandedRoutes(newExpanded)
+    }
+
+    const toggleSubItem = (subItemLabel: string) => {
+        const newExpanded = new Set(expandedSubItems)
+        if (newExpanded.has(subItemLabel)) {
+            newExpanded.delete(subItemLabel)
+        } else {
+            newExpanded.add(subItemLabel)
+        }
+        setExpandedSubItems(newExpanded)
+    }
+
     const activeItem = routes.find(r => r.label === activeRoute)
+
+    // Filter routes by enabled features
+    const visibleRoutes = routes.filter(route =>
+        !route.feature || hasFeature(route.feature)
+    );
 
     return (
         <div className="flex h-full">
@@ -161,8 +232,8 @@ export function Sidebar() {
                 </div>
 
                 {/* Navigation */}
-                <div className="flex-1 px-3 space-y-1.5 w-full">
-                    {routes.map((route) => {
+                <div className="flex-1 px-3 space-y-1.5 w-full overflow-y-auto">
+                    {visibleRoutes.map((route) => {
                         const isActive = activeRoute === route.label || pathname.startsWith(route.href)
 
                         return (
@@ -265,6 +336,27 @@ export function Sidebar() {
                             </div>
                         )}
                     </button>
+                    <button
+                        onClick={async () => {
+                            try {
+                                await api.auth.signout();
+                                window.location.href = '/';
+                            } catch (err) {
+                                console.error('Logout failed:', err);
+                            }
+                        }}
+                        className={cn(
+                            "flex items-center px-3 py-2.5 text-red-600 hover:bg-red-50 rounded-xl transition-all duration-200 w-full group",
+                            isCollapsed ? "justify-center" : ""
+                        )}
+                        title="Logout"
+                    >
+                        <LogOut className={cn(
+                            "h-4 w-4 transition-colors",
+                            isCollapsed ? "mr-0" : "mr-3"
+                        )} />
+                        {!isCollapsed && <span className="text-sm font-medium">Logout</span>}
+                    </button>
                 </div>
             </div>
 
@@ -295,30 +387,85 @@ export function Sidebar() {
                                         const isActive = pathname === sub.href ||
                                             (sub.href.includes('?') && pathname + window?.location?.search === sub.href);
 
+                                        const hasNestedItems = sub.subItems && sub.subItems.length > 0;
+                                        const isExpanded = expandedSubItems.has(sub.label);
+
                                         return (
-                                            <Link
-                                                key={sub.href}
-                                                href={sub.href}
-                                                className={cn(
-                                                    "flex items-center justify-between py-2.5 text-sm font-medium rounded-xl transition-all duration-200",
-                                                    sub.isStatusFilter ? "pl-10 pr-3" : "px-3",
-                                                    isActive
-                                                        ? "bg-rose-50 text-rose-600"
-                                                        : "text-gray-600 hover:bg-gray-50 hover:text-gray-800"
+                                            <div key={sub.href}>
+                                                {/* Main Sub-Item */}
+                                                {hasNestedItems ? (
+                                                    <div
+                                                        onClick={() => toggleSubItem(sub.label)}
+                                                        className={cn(
+                                                            "flex items-center justify-between py-2.5 text-sm font-medium rounded-xl transition-all duration-200 cursor-pointer",
+                                                            sub.isStatusFilter ? "pl-10 pr-3" : "px-3",
+                                                            isActive
+                                                                ? "bg-rose-50 text-rose-600"
+                                                                : "text-gray-600 hover:bg-gray-50 hover:text-gray-800"
+                                                        )}
+                                                    >
+                                                        <div className="flex items-center gap-3">
+                                                            {sub.icon && <sub.icon className={cn(
+                                                                "h-4 w-4",
+                                                                isActive ? "text-rose-500" : "text-gray-400"
+                                                            )} />}
+                                                            <span>{sub.label}</span>
+                                                        </div>
+                                                        <ChevronDown className={cn(
+                                                            "h-3.5 w-3.5 transition-transform duration-200",
+                                                            isActive ? "text-rose-400" : "text-gray-300",
+                                                            isExpanded && "rotate-180"
+                                                        )} />
+                                                    </div>
+                                                ) : (
+                                                    <Link
+                                                        href={sub.href}
+                                                        className={cn(
+                                                            "flex items-center justify-between py-2.5 text-sm font-medium rounded-xl transition-all duration-200",
+                                                            sub.isStatusFilter ? "pl-10 pr-3" : "px-3",
+                                                            isActive
+                                                                ? "bg-rose-50 text-rose-600"
+                                                                : "text-gray-600 hover:bg-gray-50 hover:text-gray-800"
+                                                        )}
+                                                    >
+                                                        <div className="flex items-center gap-3">
+                                                            {sub.icon && <sub.icon className={cn(
+                                                                "h-4 w-4",
+                                                                isActive ? "text-rose-500" : "text-gray-400"
+                                                            )} />}
+                                                            <span>{sub.label}</span>
+                                                        </div>
+                                                        <ChevronRight className={cn(
+                                                            "h-3.5 w-3.5",
+                                                            isActive ? "text-rose-400" : "text-gray-300"
+                                                        )} />
+                                                    </Link>
                                                 )}
-                                            >
-                                                <div className="flex items-center gap-3">
-                                                    {sub.icon && <sub.icon className={cn(
-                                                        "h-4 w-4",
-                                                        isActive ? "text-rose-500" : "text-gray-400"
-                                                    )} />}
-                                                    <span>{sub.label}</span>
-                                                </div>
-                                                <ChevronRight className={cn(
-                                                    "h-3.5 w-3.5",
-                                                    isActive ? "text-rose-400" : "text-gray-300"
-                                                )} />
-                                            </Link>
+
+                                                {/* Nested Sub-Items (Level 2) */}
+                                                {hasNestedItems && isExpanded && (
+                                                    <div className="mt-1 ml-4 space-y-1 animate-in slide-in-from-top-2 duration-200">
+                                                        {sub.subItems!.map((nestedItem) => {
+                                                            const isNestedActive = pathname.includes(nestedItem.href.split('?')[0]);
+                                                            return (
+                                                                <Link
+                                                                    key={nestedItem.href}
+                                                                    href={nestedItem.href}
+                                                                    className={cn(
+                                                                        "flex items-center gap-2 py-2 px-3 text-sm rounded-lg transition-all",
+                                                                        isNestedActive
+                                                                            ? "bg-rose-50 text-rose-600 font-medium"
+                                                                            : "text-gray-600 hover:bg-gray-50 hover:text-gray-800"
+                                                                    )}
+                                                                >
+                                                                    {nestedItem.icon && <nestedItem.icon className="h-3.5 w-3.5" />}
+                                                                    <span>{nestedItem.label}</span>
+                                                                </Link>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                )}
+                                            </div>
                                         );
                                     })}
                                 </div>
