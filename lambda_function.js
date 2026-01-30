@@ -432,8 +432,8 @@ exports.handler = async (event) => {
     await client.query(
       `INSERT INTO message_email_metadata (
          message_id, from_address, to_addresses, cc_addresses, bcc_addresses,
-         ses_message_id, raw_message_id, s3_key, message_id_header, in_reply_to, references_header, ses_metadata
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+         ses_message_id, raw_message_id, s3_key, message_id_header, in_reply_to, references_header, ses_metadata, subject
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
       [
         msgId,
         actualSenderEmail,
@@ -447,6 +447,7 @@ exports.handler = async (event) => {
         threadingHeaders.inReplyTo,
         threadingHeaders.references,
         JSON.stringify(sesMetadata),
+        subject,
       ]
     );
 

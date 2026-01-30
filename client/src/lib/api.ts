@@ -66,6 +66,13 @@ export const api = {
             });
             return res.json();
         },
+        get: async (id: string) => {
+            const token = localStorage.getItem("token");
+            const res = await fetch(`${API_BASE_URL}/contacts/${id}`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            return res.json();
+        },
         export: async (params: any) => {
             const query = new URLSearchParams(params).toString();
             const token = localStorage.getItem("token");
@@ -339,7 +346,7 @@ export const api = {
         }
     },
     conversations: {
-        list: async (params?: { status?: string; channel?: string; assignedTo?: string; search?: string; limit?: number; offset?: number }) => {
+        list: async (params?: { status?: string; channel?: string; assignedTo?: string; search?: string; contactId?: string; limit?: number; offset?: number }) => {
             const token = localStorage.getItem("token");
             const query = params ? new URLSearchParams(params as any).toString() : "";
             const res = await fetch(`${API_BASE_URL}/conversations?${query}`, {
@@ -414,6 +421,14 @@ export const api = {
                     Authorization: `Bearer ${token}`
                 },
                 body: JSON.stringify(data)
+            });
+            return res.json();
+        },
+        delete: async (id: string) => {
+            const token = localStorage.getItem("token");
+            const res = await fetch(`${API_BASE_URL}/conversations/${id}`, {
+                method: "DELETE",
+                headers: { Authorization: `Bearer ${token}` }
             });
             return res.json();
         }

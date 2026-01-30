@@ -52,5 +52,16 @@ router.put('/deployments/:channel', deploymentController.updateDeployment);
 // ================== CHAT ==================
 router.post('/chat', controller.chatWithAgent);
 
+// ================== COPILOT ==================
+const copilotController = require('../controllers/copilotController');
+router.post('/copilot/chat', copilotController.chat);
+router.post('/copilot/chat-stream', copilotController.chatStream);
+router.post('/copilot/generate-reply', copilotController.generateReply);
+router.post('/copilot/summarize', copilotController.summarize);
+router.get('/copilot/cross-channel-search', copilotController.crossChannelSearch);
+router.get('/copilot/session/:conversationId', copilotController.getSession);
+router.post('/copilot/session/:conversationId/end', copilotController.endSession);
+router.get('/copilot/quick-actions', copilotController.getQuickActions);
+
 module.exports = router;
 

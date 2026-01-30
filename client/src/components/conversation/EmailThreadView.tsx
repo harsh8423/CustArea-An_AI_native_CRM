@@ -41,8 +41,8 @@ export function EmailThreadView({ messages, conversation }: EmailThreadViewProps
                             <div className="flex items-start justify-between">
                                 <div className="flex items-start gap-3">
                                     <div className={`h-10 w-10 rounded-xl flex items-center justify-center text-white text-sm font-semibold shadow-sm ${isOutbound
-                                            ? 'bg-gradient-to-br from-blue-500 to-indigo-600'
-                                            : 'bg-gradient-to-br from-purple-500 to-purple-600'
+                                        ? 'bg-gradient-to-br from-blue-500 to-indigo-600'
+                                        : 'bg-gradient-to-br from-purple-500 to-purple-600'
                                         }`}>
                                         <User className="h-5 w-5" />
                                     </div>
@@ -56,12 +56,16 @@ export function EmailThreadView({ messages, conversation }: EmailThreadViewProps
                                             </span>
                                         </div>
                                         <div className="text-xs text-gray-500">
-                                            To: <span className="text-gray-700 font-medium">{isOutbound ? metadata?.to || conversation.contact_email : 'Me'}</span>
+                                            To: <span className="text-gray-700 font-medium">
+                                                {isOutbound
+                                                    ? (metadata?.to?.[0]?.email || metadata?.to || conversation.contact_email || 'Customer')
+                                                    : (metadata?.to?.[0]?.email || metadata?.to_addresses?.[0]?.email || metadata?.to || 'Me')}
+                                            </span>
                                         </div>
-                                        {metadata?.subject && (
+                                        {(metadata?.subject || (index === 0 && conversation.subject)) && (
                                             <div className="text-sm font-semibold text-gray-800 mt-2 flex items-center gap-1.5">
                                                 <Mail className="h-3.5 w-3.5 text-blue-500" />
-                                                {metadata.subject}
+                                                {metadata?.subject || conversation.subject}
                                             </div>
                                         )}
                                     </div>

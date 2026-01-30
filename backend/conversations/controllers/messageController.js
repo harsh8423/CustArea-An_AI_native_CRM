@@ -27,9 +27,15 @@ exports.listMessages = async (req, res) => {
                 a.id as attachment_id,
                 a.filename as attachment_filename,
                 a.content_type as attachment_content_type,
-                a.size_bytes as attachment_size
+                a.size_bytes as attachment_size,
+                mem.from_address,
+                mem.to_addresses,
+                mem.cc_addresses,
+                mem.bcc_addresses,
+                mem.subject as email_subject
             FROM messages m
             LEFT JOIN attachments a ON a.message_id = m.id
+            LEFT JOIN message_email_metadata mem ON mem.message_id = m.id
             WHERE m.conversation_id = $1 AND m.tenant_id = $2
         `;
         const params = [conversationId, tenantId];
@@ -50,13 +56,26 @@ exports.listMessages = async (req, res) => {
 
         const result = await pool.query(query, params);
 
-        // Group attachments with messages
+        // Group attachments and merge metadata
         const messagesMap = new Map();
         for (const row of result.rows) {
             const msgId = row.id;
             if (!messagesMap.has(msgId)) {
-                const { attachment_id, attachment_filename, attachment_content_type, attachment_size, ...msg } = row;
-                messagesMap.set(msgId, { ...msg, attachments: [] });
+                const { 
+                    attachment_id, attachment_filename, attachment_content_type, attachment_size, 
+                    from_address, to_addresses, cc_addresses, bcc_addresses, email_subject,
+                    ...msg 
+                } = row;
+                
+                // Merge email metadata into msg.metadata
+                const metadata = msg.metadata || {};
+                if (from_address) metadata.from_address = from_address;
+                if (to_addresses) metadata.to_addresses = to_addresses;
+                if (cc_addresses) metadata.cc_addresses = cc_addresses;
+                if (bcc_addresses) metadata.bcc_addresses = bcc_addresses;
+                if (email_subject) metadata.subject = email_subject; // Use specific email subject if available
+                
+                messagesMap.set(msgId, { ...msg, metadata, attachments: [] });
             }
             if (row.attachment_id) {
                 messagesMap.get(msgId).attachments.push({
@@ -348,7 +367,7 @@ exports.receiveInboundMessage = async (req, res) => {
                 contentHtml,
                 channel,  // provider same as channel for now
                 providerMessageId,
-                JSON.stringify(metadata)
+                JSON.stringify({ ...metadata, subject }) // Save subject in metadata
             ]
         );
 
@@ -357,15 +376,16 @@ exports.receiveInboundMessage = async (req, res) => {
         // Insert channel-specific metadata
         if (channel === 'email' && Object.keys(channelMetadata).length > 0) {
             await client.query(
-                `INSERT INTO message_email_metadata (message_id, from_address, to_addresses, cc_addresses, ses_message_id, ses_metadata)
-                 VALUES ($1, $2, $3, $4, $5, $6)`,
+                `INSERT INTO message_email_metadata (message_id, from_address, to_addresses, cc_addresses, ses_message_id, ses_metadata, subject)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
                 [
                     message.id,
                     channelMetadata.fromAddress,
                     JSON.stringify(channelMetadata.toAddresses || []),
                     JSON.stringify(channelMetadata.ccAddresses || []),
                     channelMetadata.sesMessageId,
-                    JSON.stringify(channelMetadata)
+                    JSON.stringify(channelMetadata),
+                    subject
                 ]
             );
         } else if (channel === 'whatsapp' && Object.keys(channelMetadata).length > 0) {

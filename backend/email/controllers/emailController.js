@@ -1,6 +1,7 @@
 const { pool } = require('../../config/db');
 const { createDomainIdentity, fetchIdentityStatus } = require('../services/sesIdentityService');
 const { sendTenantEmail } = require('../services/sesSendService');
+const { logSentEmail } = require('../services/emailLoggingService');
 const EmailProviderFactory = require('../services/emailProviderFactory');
 
 // ===== MULTI-PROVIDER EMAIL OPERATIONS =====
@@ -50,29 +51,23 @@ exports.sendEmailMultiProvider = async (req, res) => {
             replyTo
         });
 
-        // Log to outbound_emails table
+        // Log to messages table (replacing outbound_emails)
         const connection = provider.connectionConfig;
-        await pool.query(
-            `INSERT INTO outbound_emails (
-                tenant_id, to_email, from_email, subject, body_html, body_text,
-                status, provider_type, connection_id, provider_message_id, sent_at
-            ) VALUES ($1, $2, $3, $4, $5, $6, 'sent', $7, $8, $9, now())`,
-            [
-                tenantId,
-                Array.isArray(to) ? to.join(', ') : to,
-                fromEmail || connection.email_address,
-                subject,
-                html,
-                text,
-                connection.provider_type,
-                connection.id,
-                result.providerMessageId
-            ]
-        );
+        const loggedMessageId = await logSentEmail({
+            tenantId,
+            from: fromEmail || connection.email_address,
+            to,
+            subject,
+            html,
+            text,
+            provider: connection.provider_type,
+            providerMessageId: result.providerMessageId,
+            connectionId: connection.id
+        });
 
         res.json({ 
             ok: true, 
-            messageId: result.messageId,
+            messageId: loggedMessageId,
             providerMessageId: result.providerMessageId,
             provider: connection.provider_type
         });
@@ -451,6 +446,18 @@ exports.sendEmail = async (req, res) => {
             replyTo,
         });
 
+        // Log to messages table (sendTenantEmail no longer logs)
+        await logSentEmail({
+            tenantId,
+            from: result.effectiveFromEmail || fromEmail,
+            to,
+            subject,
+            html,
+            text,
+            provider: 'ses',
+            providerMessageId: result.sesMessageId
+        });
+
         res.json({ ok: true, ...result });
     } catch (err) {
         console.error("Error sending email:", err);
@@ -467,10 +474,41 @@ exports.getOutboundEmails = async (req, res) => {
 
     try {
         const result = await pool.query(
-            `SELECT * FROM outbound_emails WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT $2`,
+            `SELECT m.*, mem.to_addresses, mem.from_address, mem.subject 
+             FROM messages m
+             LEFT JOIN message_email_metadata mem ON m.id = mem.message_id
+             WHERE m.tenant_id = $1 
+             AND m.channel = 'email' 
+             AND m.direction = 'outbound'
+             ORDER BY m.created_at DESC LIMIT $2`,
             [tenantId, parseInt(limit)]
         );
-        res.json({ emails: result.rows });
+
+        const mappedEmails = result.rows.map(row => {
+            // Map to_addresses JSON to string
+            let toEmail = '';
+            if (row.to_addresses && Array.isArray(row.to_addresses)) {
+                toEmail = row.to_addresses.map(a => a.email).join(', ');
+            }
+
+            return {
+                id: row.id,
+                tenant_id: row.tenant_id,
+                to_email: toEmail,
+                from_email: row.from_address,
+                subject: row.subject,
+                body_html: row.content_html,
+                body_text: row.content_text,
+                status: row.status,
+                provider_type: row.provider,
+                connection_id: row.metadata?.connectionId,
+                provider_message_id: row.provider_message_id,
+                sent_at: row.sent_at,
+                created_at: row.created_at
+            };
+        });
+
+        res.json({ emails: mappedEmails });
     } catch (err) {
         console.error("Error fetching outbound emails:", err);
         res.status(500).json({ error: "Failed to fetch outbound emails" });

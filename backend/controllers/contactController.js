@@ -36,6 +36,27 @@ exports.getContacts = async (req, res) => {
     }
 };
 
+exports.getContactById = async (req, res) => {
+    try {
+        const tenantId = req.user.tenantId;
+        const { id } = req.params;
+
+        const result = await pool.query(
+            `SELECT * FROM contacts WHERE id = $1 AND tenant_id = $2`,
+            [id, tenantId]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Contact not found' });
+        }
+
+        res.json(result.rows[0]);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Failed to fetch contact' });
+    }
+};
+
 exports.exportContacts = async (req, res) => {
     try {
         const { search } = req.query;

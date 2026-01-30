@@ -42,15 +42,6 @@ async function sendTenantEmail(input) {
             throw new Error("Could not determine fromEmail");
         }
 
-        // Insert into outbound_emails with pending status
-        const outboundInsert = await client.query(
-            `INSERT INTO outbound_emails (tenant_id, to_email, from_email, subject, body_html, body_text, status)
-             VALUES ($1, $2, $3, $4, $5, $6, 'pending')
-             RETURNING id`,
-            [tenantId, to.toLowerCase(), effectiveFromEmail.toLowerCase(), subject, html || null, text || null]
-        );
-        const outboundId = outboundInsert.rows[0].id;
-
         // Build SES message
         const message = {
             Subject: { Data: subject, Charset: "UTF-8" },
@@ -78,17 +69,9 @@ async function sendTenantEmail(input) {
         // Send via SES
         const sendRes = await sesClient.send(new SendEmailCommand(sesParams));
 
-        // Update outbound_emails with sent status
-        await client.query(
-            `UPDATE outbound_emails
-             SET status = 'sent', ses_message_id = $1, sent_at = now()
-             WHERE id = $2`,
-            [sendRes.MessageId, outboundId]
-        );
-
         return {
-            outboundId,
             sesMessageId: sendRes.MessageId,
+            effectiveFromEmail,
         };
     } catch (err) {
         console.error("SES Send Error:", err);

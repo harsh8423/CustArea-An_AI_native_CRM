@@ -161,6 +161,7 @@ CREATE TABLE message_email_metadata (
     cc_addresses jsonb,
     bcc_addresses jsonb,
     reply_to text,
+    subject text,
     
     -- SES-specific
     ses_message_id text,
@@ -395,6 +396,32 @@ CREATE TABLE tenant_whatsapp_accounts (
 );
 
 CREATE INDEX IF NOT EXISTS idx_wa_accounts_tenant ON tenant_whatsapp_accounts(tenant_id);
+
+
+
+-- =====================================================
+-- CustArea CRM - Unknown Emails Table
+-- Migration: 018_unknown_emails.sql
+-- =====================================================
+
+CREATE TABLE unknown_emails (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    inbound_address text,
+    from_address text,
+    subject text,
+    text_body text,
+    html_body text,
+    raw_message_id text,
+    s3_key text,
+    reason text, -- 'tenant_not_found', 'forwarder_not_allowed', etc.
+    created_at timestamptz DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_unknown_emails_created_at ON unknown_emails(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_unknown_emails_inbound ON unknown_emails(inbound_address);
+
+COMMENT ON TABLE unknown_emails IS 'Stores inbound emails that could not be linked to a valid tenant or authorized forwarder';
+
 
 -- Widget Embed Config (per tenant)
 CREATE TABLE tenant_widget_config (

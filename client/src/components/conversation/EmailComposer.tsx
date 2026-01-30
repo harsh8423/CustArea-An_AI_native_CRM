@@ -81,32 +81,34 @@ export function EmailComposer({ conversationId, defaultSubject, recipientEmail, 
     };
 
     return (
-        <div className="space-y-3">
+        <div className="space-y-6">
             {/* Sender Selection */}
             <div>
-                <label className="text-xs font-medium text-gray-600 mb-1 block">From</label>
-                <select
-                    value={form.from}
-                    onChange={(e) => setForm(prev => ({ ...prev, from: e.target.value }))}
-                    className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100"
-                >
-                    {senderAddresses.map((addr) => (
-                        <option key={addr.email} value={addr.email}>
-                            {addr.displayName}
-                        </option>
-                    ))}
-                </select>
+                <label className="text-[11px] uppercase tracking-wider font-semibold text-gray-500 mb-2 block">From</label>
+                <div className="relative">
+                    <select
+                        value={form.from}
+                        onChange={(e) => setForm(prev => ({ ...prev, from: e.target.value }))}
+                        className="w-full px-4 py-3 bg-gray-50 border-0 rounded-xl text-sm font-medium text-gray-900 focus:ring-2 focus:ring-purple-500/10 transition-all hover:bg-gray-100/80 cursor-pointer appearance-none"
+                    >
+                        {senderAddresses.map((addr) => (
+                            <option key={addr.email} value={addr.email}>
+                                {addr.displayName}
+                            </option>
+                        ))}
+                    </select>
+                </div>
             </div>
 
             {/* Subject */}
             <div>
-                <label className="text-xs font-medium text-gray-600 mb-1 block">Subject</label>
+                <label className="text-[11px] uppercase tracking-wider font-semibold text-gray-500 mb-2 block">Subject</label>
                 <input
                     type="text"
                     value={form.subject}
                     onChange={(e) => setForm(prev => ({ ...prev, subject: e.target.value }))}
                     placeholder="Email subject"
-                    className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100"
+                    className="w-full px-4 py-3 bg-gray-50 border-0 rounded-xl text-sm font-medium text-gray-900 focus:ring-2 focus:ring-purple-500/10 transition-all hover:bg-gray-100/80 placeholder:text-gray-400"
                 />
             </div>
 
@@ -114,7 +116,7 @@ export function EmailComposer({ conversationId, defaultSubject, recipientEmail, 
             {!showCCBCC && (
                 <button
                     onClick={() => setShowCCBCC(true)}
-                    className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+                    className="text-xs text-gray-500 hover:text-gray-900 font-medium transition-colors"
                 >
                     + Add CC/BCC
                 </button>
@@ -122,59 +124,73 @@ export function EmailComposer({ conversationId, defaultSubject, recipientEmail, 
 
             {/* CC/BCC */}
             {showCCBCC && (
-                <div className="space-y-2">
-                    <input
-                        type="text"
-                        value={cc}
-                        onChange={(e) => setCC(e.target.value)}
-                        placeholder="CC"
-                        className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100"
-                    />
-                    <input
-                        type="text"
-                        value={bcc}
-                        onChange={(e) => setBCC(e.target.value)}
-                        placeholder="BCC"
-                        className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100"
-                    />
+                <div className="space-y-4 pt-2 animate-in fade-in slide-in-from-top-1 duration-200">
+                    <div>
+                        <label className="text-[11px] uppercase tracking-wider font-semibold text-gray-500 mb-2 block">CC</label>
+                        <input
+                            type="text"
+                            value={cc}
+                            onChange={(e) => setCC(e.target.value)}
+                            placeholder="CC recipients"
+                            className="w-full px-4 py-3 bg-gray-50 border-0 rounded-xl text-sm font-medium text-gray-900 focus:ring-2 focus:ring-purple-500/10 transition-all hover:bg-gray-100/80 placeholder:text-gray-400"
+                        />
+                    </div>
+                    <div>
+                        <label className="text-[11px] uppercase tracking-wider font-semibold text-gray-500 mb-2 block">BCC</label>
+                        <input
+                            type="text"
+                            value={bcc}
+                            onChange={(e) => setBCC(e.target.value)}
+                            placeholder="BCC recipients"
+                            className="w-full px-4 py-3 bg-gray-50 border-0 rounded-xl text-sm font-medium text-gray-900 focus:ring-2 focus:ring-purple-500/10 transition-all hover:bg-gray-100/80 placeholder:text-gray-400"
+                        />
+                    </div>
                 </div>
             )}
 
             {/* Body and Send */}
-            <div className="flex items-end gap-3">
+            {/* Body and Send */}
+            <div className="flex flex-col gap-4">
                 <div className="flex-1">
-                    <label className="text-xs font-medium text-gray-600 mb-1 block">Message</label>
+                    <label className="text-[11px] uppercase tracking-wider font-semibold text-gray-500 mb-2 block">Message</label>
                     <textarea
                         value={form.body}
                         onChange={(e) => setForm(prev => ({ ...prev, body: e.target.value }))}
                         placeholder="Type your message..."
-                        rows={3}
+                        rows={6}
                         onKeyDown={(e) => {
                             if (e.key === "Enter" && e.ctrlKey) {
                                 e.preventDefault();
                                 handleSend();
                             }
                         }}
-                        className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 resize-none"
+                        className="w-full px-4 py-3 bg-gray-50 border-0 rounded-xl text-sm text-gray-900 focus:ring-2 focus:ring-purple-500/10 transition-all hover:bg-gray-100/80 resize-none placeholder:text-gray-400"
                     />
                 </div>
-                <button
-                    onClick={handleSend}
-                    disabled={sending || !form.subject.trim() || !form.body.trim()}
-                    className="px-4 py-2 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all disabled:opacity-50 flex items-center gap-2 shadow-sm h-[38px]"
-                >
-                    {sending ? (
-                        <RefreshCw className="h-4 w-4 animate-spin" />
-                    ) : (
-                        <>
-                            <Send className="h-4 w-4" />
-                            <span className="text-sm font-medium">Send</span>
-                        </>
-                    )}
-                </button>
+
+                <div className="flex items-center justify-between pt-2">
+                    <p className="text-[10px] text-gray-400 font-medium">
+                        Press <span className="px-1 py-0.5 bg-gray-100 rounded text-gray-500">Ctrl</span> + <span className="px-1 py-0.5 bg-gray-100 rounded text-gray-500">Enter</span> to send
+                    </p>
+
+                    <button
+                        onClick={handleSend}
+                        disabled={sending || !form.subject.trim() || !form.body.trim()}
+                        className="px-6 py-2.5 bg-gray-900 text-white rounded-full hover:bg-gray-800 transition-all disabled:opacity-50 disabled:hover:bg-gray-900 flex items-center gap-2 shadow-lg shadow-gray-900/10 active:scale-95 duration-200"
+                    >
+                        {sending ? (
+                            <RefreshCw className="h-4 w-4 animate-spin" />
+                        ) : (
+                            <>
+                                <span className="text-sm font-medium">Send Email</span>
+                                <Send className="h-3.5 w-3.5" />
+                            </>
+                        )}
+                    </button>
+                </div>
             </div>
 
-            <p className="text-[10px] text-gray-400">
+            <p className="text-[10px] text-gray-400 hidden">
                 Press Ctrl+Enter to send
             </p>
         </div>

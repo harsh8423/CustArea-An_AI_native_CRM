@@ -232,13 +232,13 @@ exports.sendConversationEmail = async (req, res) => {
         }
 
         // 5. Create message record in conversation
-        await createConversationMessage(finalConversationId, {
+        const internalMessageId = await createConversationMessage(finalConversationId, {
             direction: 'outbound',
             role: 'agent',
             content_text: body,
             content_html: body,
             provider: provider.type,
-            provider_message_id: result.messageId,
+            provider_message_id: result.providerMessageId,
             reply_to_message_id: replyToMessageId,
             metadata: { 
                 subject,
@@ -251,7 +251,8 @@ exports.sendConversationEmail = async (req, res) => {
 
         res.json({ 
             success: true, 
-            messageId: result.messageId,
+            messageId: internalMessageId,
+            providerMessageId: result.providerMessageId,
             provider: provider.type,
             conversationId: finalConversationId  // Return the conversation ID
         });

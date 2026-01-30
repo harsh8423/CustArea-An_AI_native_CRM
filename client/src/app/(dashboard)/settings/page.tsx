@@ -65,37 +65,39 @@ export default function SettingsPage() {
                 </div>
 
                 {/* Right Panel - Settings Content */}
-                <div className="flex-1 bg-white rounded-2xl shadow-sm overflow-hidden">
-                    {activeTab === "emails" && <EmailSettings />}
-                    {activeTab === "channels" && <ChannelSettings />}
-                    {activeTab === "integrations" && <IntegrationsPage />}
-                    {activeTab === "security" && (
-                        <div className="h-full flex flex-col items-center justify-center text-gray-400">
-                            <div className="h-16 w-16 rounded-2xl bg-gray-50 flex items-center justify-center mb-4">
-                                <Shield className="h-7 w-7 text-gray-300" />
+                <div className="flex-1 bg-white rounded-2xl shadow-sm overflow-hidden flex flex-col">
+                    <div className="flex-1 overflow-y-auto">
+                        {activeTab === "emails" && <EmailSettings />}
+                        {activeTab === "channels" && <ChannelSettings />}
+                        {activeTab === "integrations" && <IntegrationsPage />}
+                        {activeTab === "security" && (
+                            <div className="h-full flex flex-col items-center justify-center text-gray-400">
+                                <div className="h-16 w-16 rounded-2xl bg-gray-50 flex items-center justify-center mb-4">
+                                    <Shield className="h-7 w-7 text-gray-300" />
+                                </div>
+                                <h2 className="text-lg font-semibold text-gray-600">Security Settings</h2>
+                                <p className="text-sm text-gray-400 mt-1">Coming soon...</p>
                             </div>
-                            <h2 className="text-lg font-semibold text-gray-600">Security Settings</h2>
-                            <p className="text-sm text-gray-400 mt-1">Coming soon...</p>
-                        </div>
-                    )}
-                    {activeTab === "notifications" && (
-                        <div className="h-full flex flex-col items-center justify-center text-gray-400">
-                            <div className="h-16 w-16 rounded-2xl bg-gray-50 flex items-center justify-center mb-4">
-                                <Bell className="h-7 w-7 text-gray-300" />
+                        )}
+                        {activeTab === "notifications" && (
+                            <div className="h-full flex flex-col items-center justify-center text-gray-400">
+                                <div className="h-16 w-16 rounded-2xl bg-gray-50 flex items-center justify-center mb-4">
+                                    <Bell className="h-7 w-7 text-gray-300" />
+                                </div>
+                                <h2 className="text-lg font-semibold text-gray-600">Notification Settings</h2>
+                                <p className="text-sm text-gray-400 mt-1">Coming soon...</p>
                             </div>
-                            <h2 className="text-lg font-semibold text-gray-600">Notification Settings</h2>
-                            <p className="text-sm text-gray-400 mt-1">Coming soon...</p>
-                        </div>
-                    )}
-                    {activeTab === "profile" && (
-                        <div className="h-full flex flex-col items-center justify-center text-gray-400">
-                            <div className="h-16 w-16 rounded-2xl bg-gray-50 flex items-center justify-center mb-4">
-                                <User className="h-7 w-7 text-gray-300" />
+                        )}
+                        {activeTab === "profile" && (
+                            <div className="h-full flex flex-col items-center justify-center text-gray-400">
+                                <div className="h-16 w-16 rounded-2xl bg-gray-50 flex items-center justify-center mb-4">
+                                    <User className="h-7 w-7 text-gray-300" />
+                                </div>
+                                <h2 className="text-lg font-semibold text-gray-600">Profile Settings</h2>
+                                <p className="text-sm text-gray-400 mt-1">Coming soon...</p>
                             </div>
-                            <h2 className="text-lg font-semibold text-gray-600">Profile Settings</h2>
-                            <p className="text-sm text-gray-400 mt-1">Coming soon...</p>
-                        </div>
-                    )}
+                        )}
+                    </div>
                 </div>
             </div>
         </div>

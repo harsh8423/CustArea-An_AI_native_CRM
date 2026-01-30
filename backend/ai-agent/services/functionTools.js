@@ -165,6 +165,140 @@ const FUNCTION_TOOLS = [
                 required: ['title', 'description']
             }
         }
+    },
+    // ===== COPILOT-SPECIFIC FUNCTION TOOLS =====
+    {
+        type: 'function',
+        function: {
+            name: 'generate_reply_draft',
+            description: 'Generate a contextual reply draft for the agent to send. Use this when the agent asks for help writing a response.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    conversation_id: {
+                        type: 'string',
+                        description: 'UUID of the conversation to generate reply for'
+                    },
+                    instructions: {
+                        type: 'string',
+                        description: 'Specific instructions or points to include in the reply (e.g., "apologize for delay and offer 20% discount")'
+                    },
+                    tone: {
+                        type: 'string',
+                        enum: ['professional', 'friendly', 'formal', 'empathetic'],
+                        description: 'Tone of the reply (default: professional)'
+                    }
+                },
+                required: ['conversation_id']
+            }
+        }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'summarize_conversation',
+            description: 'Summarize the conversation thread. Use when agent asks for a summary or overview.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    conversation_id: {
+                        type: 'string',
+                        description: 'UUID of the conversation to summarize'
+                    },
+                    summary_type: {
+                        type: 'string',
+                        enum: ['brief', 'detailed', 'action_items'],
+                        description: 'Type of summary: brief (2-3 sentences), detailed (with key points), or action_items (checklist of next steps)'
+                    },
+                    include_sentiment: {
+                        type: 'boolean',
+                        description: 'Whether to include sentiment analysis (default: false)'
+                    }
+                },
+                required: ['conversation_id']
+            }
+        }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'search_cross_channel_conversations',
+            description: 'Search for all conversations with a contact across different communication channels (email, WhatsApp, chat, phone)',
+            parameters: {
+                type: 'object',
+                properties: {
+                    contact_id: {
+                        type: 'string',
+                        description: 'UUID of the contact (optional if email or phone provided)'
+                    },
+                    email: {
+                        type: 'string',
+                        description: 'Email address to search for'
+                    },
+                    phone: {
+                        type: 'string',
+                        description: 'Phone number to search for'
+                    },
+                    channels: {
+                        type: 'array',
+                        items: {
+                            type: 'string',
+                            enum: ['email', 'whatsapp', 'widget', 'phone']
+                        },
+                        description: 'Specific channels to search (leave empty for all channels)'
+                    },
+                    limit: {
+                        type: 'integer',
+                        description: 'Maximum number of conversations to return (default: 20)',
+                        default: 20
+                    }
+                },
+                required: []
+            }
+        }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'get_company_guidelines',
+            description: 'Retrieve company guidelines, policies, SOPs, or standard response templates from knowledge base',
+            parameters: {
+                type: 'object',
+                properties: {
+                    topic: {
+                        type: 'string',
+                        description: 'Topic to search for (e.g., "refund policy", "response time SLA", "greeting template")'
+                    },
+                    category: {
+                        type: 'string',
+                        enum: ['policy', 'sla', 'template', 'procedure', 'faq'],
+                        description: 'Specific category of guideline (optional)'
+                    }
+                },
+                required: ['topic']
+            }
+        }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'get_conversation_metadata',
+            description: 'Get detailed metadata and analytics about a conversation including tags, sentiment, response times, and engagement metrics',
+            parameters: {
+                type: 'object',
+                properties: {
+                    conversation_id: {
+                        type: 'string',
+                        description: 'UUID of the conversation'
+                    },
+                    include_analytics: {
+                        type: 'boolean',
+                        description: 'Include detailed analytics like response times and engagement metrics (default: true)'
+                    }
+                },
+                required: ['conversation_id']
+            }
+        }
     }
 ];
 
@@ -195,6 +329,22 @@ async function executeTool(tenantId, toolName, args, context = {}) {
 
         case 'create_ticket':
             return await createTicket(tenantId, args, context.conversationId, context.contactId);
+
+        // Copilot-specific tools
+        case 'generate_reply_draft':
+            return await generateReplyDraft(tenantId, args.conversation_id, args.instructions, args.tone);
+
+        case 'summarize_conversation':
+            return await summarizeConversationTool(tenantId, args.conversation_id, args.summary_type, args.include_sentiment);
+
+        case 'search_cross_channel_conversations':
+            return await searchCrossChannelConversations(tenantId, args.contact_id, args.email, args.phone, args.channels, args.limit);
+
+        case 'get_company_guidelines':
+            return await getCompanyGuidelines(tenantId, args.topic, args.category);
+
+        case 'get_conversation_metadata':
+            return await getConversationMetadata(tenantId, args.conversation_id, args.include_analytics);
 
         default:
             return { error: `Unknown tool: ${toolName}` };
@@ -509,6 +659,241 @@ async function createTicket(tenantId, args, conversationId = null, contactId = n
             success: false,
             error: 'Failed to create ticket',
             message: 'I encountered an error while creating the ticket. Please try again or contact support.'
+        };
+    }
+}
+
+// ===== COPILOT-SPECIFIC TOOL IMPLEMENTATIONS =====
+const copilotService = require('./copilotService');
+
+/**
+ * Generate reply draft (Copilot tool)
+ */
+async function generateReplyDraft(tenantId, conversationId, instructions = '', tone = 'professional') {
+    try {
+        const result = await copilotService.generateReplyDraft(tenantId, conversationId, {
+            instructions,
+            tone
+        });
+        
+        return {
+            success: true,
+            draft: result.draft,
+            channel: result.channel,
+            tone: result.tone
+        };
+    } catch (error) {
+        console.error('Error generating reply draft:', error);
+        return {
+            success: false,
+            error: 'Failed to generate reply draft'
+        };
+    }
+}
+
+/**
+ * Summarize conversation (Copilot tool)
+ */
+async function summarizeConversationTool(tenantId, conversationId, summaryType = 'brief', includeSentiment = false) {
+    try {
+        const result = await copilotService.summarizeConversation(tenantId, conversationId, summaryType);
+        
+        return {
+            success: true,
+            summary: result.summary,
+            summaryType: result.summaryType,
+            messageCount: result.messageCount
+        };
+    } catch (error) {
+        console.error('Error summarizing conversation:', error);
+        return {
+            success: false,
+            error: 'Failed to summarize conversation'
+        };
+    }
+}
+
+/**
+ * Search cross-channel conversations (Copilot tool)
+ */
+async function searchCrossChannelConversations(tenantId, contactId, email, phone, channels = [], limit = 20) {
+    try {
+        let query = `
+            SELECT DISTINCT c.id, c.channel, c.subject, c.status, c.created_at, c.updated_at,
+                   c.channel_contact_id,
+                   (SELECT COUNT(*) FROM messages WHERE conversation_id = c.id) as message_count,
+                   con.full_name as contact_name, con.email as contact_email
+            FROM conversations c
+            LEFT JOIN contacts con ON c.contact_id = con.id
+            WHERE c.tenant_id = $1
+        `;
+        
+        const params = [tenantId];
+        let paramIndex = 2;
+        
+        // Build WHERE clause based on provided parameters
+        const conditions = [];
+        
+        if (contactId) {
+            conditions.push(`c.contact_id = $${paramIndex}`);
+            params.push(contactId);
+            paramIndex++;
+        }
+        
+        if (email) {
+            conditions.push(`(con.email ILIKE $${paramIndex} OR c.channel_contact_id ILIKE $${paramIndex})`);
+            params.push(`%${email}%`);
+            paramIndex++;
+        }
+        
+        if (phone) {
+            conditions.push(`(con.phone ILIKE $${paramIndex} OR c.channel_contact_id ILIKE $${paramIndex})`);
+            params.push(`%${phone}%`);
+            paramIndex++;
+        }
+        
+        if (channels && channels.length > 0) {
+            conditions.push(`c.channel = ANY($${paramIndex})`);
+            params.push(channels);
+            paramIndex++;
+        }
+        
+        if (conditions.length > 0) {
+            query += ` AND (${conditions.join(' OR ')})`;
+        }
+        
+        query += ` ORDER BY c.updated_at DESC LIMIT $${paramIndex}`;
+        params.push(limit);
+        
+        const result = await pool.query(query, params);
+        
+        // Group by channel
+        const groupedByChannel = {};
+        result.rows.forEach(conv => {
+            if (!groupedByChannel[conv.channel]) {
+                groupedByChannel[conv.channel] = [];
+            }
+            groupedByChannel[conv.channel].push(conv);
+        });
+        
+        return {
+            success: true,
+            conversations: result.rows,
+            groupedByChannel,
+            totalCount: result.rows.length
+        };
+    } catch (error) {
+        console.error('Error searching cross-channel conversations:', error);
+        return {
+            success: false,
+            error: 'Failed to search conversations'
+        };
+    }
+}
+
+/**
+ * Get company guidelines (Copilot tool)
+ */
+async function getCompanyGuidelines(tenantId, topic, category = null) {
+    try {
+        // Search knowledge base for guidelines
+        const searchQuery = category ? `${category}: ${topic}` : topic;
+        const guidelines = await getKnowledgeContext(tenantId, searchQuery, { limit: 5 });
+        
+        if (!guidelines || guidelines.length === 0) {
+            return {
+                success: true,
+                found: false,
+                message: `No guidelines found for "${topic}". Consider adding this to the knowledge base.`
+            };
+        }
+        
+        return {
+            success: true,
+            found: true,
+            guidelines: guidelines.map(g => ({
+                title: g.title,
+                content: g.content,
+                relevance: g.score || 0
+            })),
+            count: guidelines.length
+        };
+    } catch (error) {
+        console.error('Error getting company guidelines:', error);
+        return {
+            success: false,
+            error: 'Failed to retrieve guidelines'
+        };
+    }
+}
+
+/**
+ * Get conversation metadata (Copilot tool)
+ */
+async function getConversationMetadata(tenantId, conversationId, includeAnalytics = true) {
+    try {
+        const convResult = await pool.query(
+            `SELECT c.*,
+                    con.full_name as contact_name,
+                    con.email as contact_email,
+                    con.phone as contact_phone,
+                    u.full_name as assigned_user_name
+             FROM conversations c
+             LEFT JOIN contacts con ON c.contact_id = con.id
+             LEFT JOIN users u ON c.assigned_to = u.id
+             WHERE c.id = $1 AND c.tenant_id = $2`,
+            [conversationId, tenantId]
+        );
+        
+        if (convResult.rows.length === 0) {
+            return { success: false, error: 'Conversation not found' };
+        }
+        
+        const conversation = convResult.rows[0];
+        const metadata = {
+            id: conversation.id,
+            channel: conversation.channel,
+            status: conversation.status,
+            priority: conversation.priority,
+            subject: conversation.subject,
+            createdAt: conversation.created_at,
+            updatedAt: conversation.updated_at,
+            contact: {
+                name: conversation.contact_name,
+                email: conversation.contact_email,
+                phone: conversation.contact_phone
+            },
+            assignedTo: conversation.assigned_user_name,
+            aiEnabled: conversation.ai_enabled,
+            aiMode: conversation.ai_mode
+        };
+        
+        if (includeAnalytics) {
+            // Get message statistics
+            const stats = await pool.query(
+                `SELECT 
+                    COUNT(*) as total_messages,
+                    COUNT(*) FILTER (WHERE direction = 'inbound') as inbound_count,
+                    COUNT(*) FILTER (WHERE direction = 'outbound') as outbound_count,
+                    MIN(created_at) as first_message_at,
+                    MAX(created_at) as last_message_at
+                 FROM messages
+                 WHERE conversation_id = $1 AND tenant_id = $2`,
+                [conversationId, tenantId]
+            );
+            
+            metadata.analytics = stats.rows[0];
+        }
+        
+        return {
+            success: true,
+            metadata
+        };
+    } catch (error) {
+        console.error('Error getting conversation metadata:', error);
+        return {
+            success: false,
+            error: 'Failed to retrieve conversation metadata'
         };
     }
 }

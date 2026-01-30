@@ -12,11 +12,13 @@ import {
     Mail, MessageCircle, Phone, Search, MoreHorizontal,
     Send, Paperclip, Smile, Star, ChevronDown, ChevronUp,
     User, Tag, Edit, MessageSquare, RefreshCw, Check, Sparkles,
-    Ticket, X, Zap, Filter as FilterIcon
+    Ticket, X, Zap, Filter as FilterIcon, Trash, Reply
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import dynamic from 'next/dynamic';
+import { ReplyDrawer } from "@/components/conversation/ReplyDrawer";
+import CopilotPanel from "@/components/conversation/CopilotPanel";
 
 
 
@@ -91,9 +93,10 @@ export default function ConversationPage() {
     const [searchQuery, setSearchQuery] = useState("");
     const [showDetails, setShowDetails] = useState(true);
     const [stats, setStats] = useState<any>(null);
-    const [detailsTab, setDetailsTab] = useState<"details" | "copilot">("details");
+    const [detailsTab, setDetailsTab] = useState<"details" | "copilot">("copilot");
 
     const [showComposeEmailModal, setShowComposeEmailModal] = useState(false);
+    const [showReplyDrawer, setShowReplyDrawer] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
     // Filter state
@@ -219,6 +222,22 @@ export default function ConversationPage() {
             setSelectedConversation(prev => prev ? { ...prev, status } : null);
         } catch (err) {
             console.error("Failed to update status:", err);
+        }
+    };
+
+    const handleDeleteConversation = async () => {
+        if (!selectedConversation) return;
+        if (!confirm("Are you sure you want to delete this conversation? This action cannot be undone and will delete all related messages and data.")) return;
+
+        try {
+            await api.conversations.delete(selectedConversation.id);
+            // Remove from list
+            setConversations(prev => prev.filter(c => c.id !== selectedConversation.id));
+            setSelectedConversation(null);
+            setMessages([]);
+        } catch (err) {
+            console.error("Failed to delete conversation:", err);
+            alert("Failed to delete conversation");
         }
     };
 
@@ -514,7 +533,7 @@ export default function ConversationPage() {
                 </div>
 
                 {/* Center Panel - Message Thread */}
-                <div className="flex-1 bg-white rounded-2xl flex flex-col shadow-sm overflow-hidden min-w-0">
+                <div className="flex-1 bg-white rounded-2xl flex flex-col shadow-sm overflow-hidden min-w-0 relative">
                     {selectedConversation ? (
                         <>
                             {/* Thread Header */}
@@ -582,11 +601,21 @@ export default function ConversationPage() {
                                         <button className="p-2.5 hover:bg-gray-100 rounded-xl transition-all duration-200">
                                             <MoreHorizontal className="h-4 w-4 text-gray-400" />
                                         </button>
+                                        <button
+                                            onClick={handleDeleteConversation}
+                                            className="p-2.5 hover:bg-red-50 text-gray-400 hover:text-red-500 rounded-xl transition-all duration-200"
+                                            title="Delete conversation"
+                                        >
+                                            <Trash className="h-4 w-4" />
+                                        </button>
                                     </div>
                                 </div>
                                 {/* Unknown Contact Indicator - shown below header */}
                                 <UnknownContactIndicator
-                                    conversation={selectedConversation}
+                                    conversation={{
+                                        ...selectedConversation,
+                                        contact_name: selectedConversation.contact_name || undefined
+                                    }}
                                     onContactAdded={() => fetchConversations()}
                                     className="mt-4"
                                 />
@@ -610,20 +639,23 @@ export default function ConversationPage() {
                                         <p className="text-xs text-gray-400 mt-1">Start the conversation below</p>
                                     </div>
                                 ) : (
-                                    <MessageRenderer conversation={selectedConversation} messages={messages} />
+                                    <MessageRenderer conversation={selectedConversation} messages={messages as any} />
                                 )}
                                 <div ref={messagesEndRef} />
                             </div>
 
                             {/* Composer - Email vs Other Channels */}
-                            <div className="px-6 py-4 bg-white border-t border-gray-100">
+                            <div className="px-6 py-4 bg-white rounded-2xl">
                                 {selectedConversation.channel === 'email' ? (
-                                    <EmailComposer
-                                        conversationId={selectedConversation.id}
-                                        defaultSubject={selectedConversation.subject}
-                                        recipientEmail={selectedConversation.contact_email || selectedConversation.channel_contact_id || ''}
-                                        onSent={() => fetchMessages(selectedConversation.id)}
-                                    />
+                                    <div className="flex justify-center">
+                                        <button
+                                            onClick={() => setShowReplyDrawer(true)}
+                                            className="flex items-center gap-2 px-4 py-2.5 bg-gray-900 text-white rounded-xl hover:bg-gray-800 transition-all duration-200 shadow-sm"
+                                        >
+                                            <Reply className="h-4 w-4" />
+                                            <span className="text-sm font-medium">Reply</span>
+                                        </button>
+                                    </div>
                                 ) : (
                                     <div className="flex items-end gap-3">
                                         <div className="flex-1 relative">
@@ -675,6 +707,16 @@ export default function ConversationPage() {
                             <p className="text-sm text-gray-400">Choose from your inbox on the left</p>
                         </div>
                     )}
+                    {selectedConversation && (
+                        <ReplyDrawer
+                            isOpen={showReplyDrawer}
+                            onClose={() => setShowReplyDrawer(false)}
+                            conversationId={selectedConversation.id}
+                            defaultSubject={selectedConversation.subject || undefined}
+                            recipientEmail={selectedConversation.contact_email || selectedConversation.channel_contact_id || ''}
+                            onSent={() => fetchMessages(selectedConversation.id)}
+                        />
+                    )}
                 </div>
 
                 {/* Right Panel - Details */}
@@ -683,17 +725,6 @@ export default function ConversationPage() {
                         {/* Mini Tabs */}
                         <div className="p-4">
                             <div className="flex gap-1 p-1 bg-gray-50 rounded-xl">
-                                <button
-                                    onClick={() => setDetailsTab("details")}
-                                    className={cn(
-                                        "flex-1 px-3 py-2 text-xs font-medium rounded-lg transition-all duration-200",
-                                        detailsTab === "details"
-                                            ? "bg-white text-gray-900 shadow-sm"
-                                            : "text-gray-500 hover:text-gray-700"
-                                    )}
-                                >
-                                    Details
-                                </button>
                                 <button
                                     onClick={() => setDetailsTab("copilot")}
                                     className={cn(
@@ -705,6 +736,17 @@ export default function ConversationPage() {
                                 >
                                     <Sparkles className="h-3 w-3" />
                                     Copilot
+                                </button>
+                                <button
+                                    onClick={() => setDetailsTab("details")}
+                                    className={cn(
+                                        "flex-1 px-3 py-2 text-xs font-medium rounded-lg transition-all duration-200",
+                                        detailsTab === "details"
+                                            ? "bg-white text-gray-900 shadow-sm"
+                                            : "text-gray-500 hover:text-gray-700"
+                                    )}
+                                >
+                                    Details
                                 </button>
                             </div>
                         </div>
@@ -797,44 +839,27 @@ export default function ConversationPage() {
                                             </div>
                                             <ChevronDown className="h-4 w-4 text-gray-300" />
                                         </button>
-                                        <button className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 rounded-xl transition-all duration-200">
-                                            <div className="flex items-center gap-2">
-                                                <Edit className="h-4 w-4 text-gray-400" />
-                                                <span className="text-xs font-medium text-gray-700">User notes</span>
-                                            </div>
-                                            <ChevronDown className="h-4 w-4 text-gray-300" />
-                                        </button>
-                                        <button className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 rounded-xl transition-all duration-200">
-                                            <div className="flex items-center gap-2">
-                                                <Tag className="h-4 w-4 text-gray-400" />
-                                                <span className="text-xs font-medium text-gray-700">User tags</span>
-                                            </div>
-                                            <ChevronDown className="h-4 w-4 text-gray-300" />
-                                        </button>
                                     </div>
                                 </>
                             ) : (
-                                <div className="flex flex-col items-center justify-center h-full text-gray-400 py-12">
-                                    <div className="h-14 w-14 rounded-2xl bg-gradient-to-br from-purple-50 to-indigo-50 flex items-center justify-center mb-4">
-                                        <Sparkles className="h-6 w-6 text-purple-400" />
-                                    </div>
-                                    <p className="text-sm font-medium text-gray-600">AI Copilot</p>
-                                    <p className="text-xs text-gray-400 mt-1 text-center px-4">Get AI-powered suggestions and insights</p>
-                                </div>
+                                <CopilotPanel
+                                    conversationId={selectedConversation.id}
+                                    contactId={selectedConversation.contact_id || undefined}
+                                    channel={selectedConversation.channel}
+                                    onReplyGenerated={(draft) => {
+                                        // Handle reply generated - copy to composer
+                                        if (selectedConversation.channel === 'email') {
+                                            setShowReplyDrawer(true);
+                                        } else {
+                                            setNewMessage(draft);
+                                        }
+                                    }}
+                                />
                             )}
                         </div>
                     </div>
                 )}
             </div>
-
-            {/* Compose Email Modal */}
-            <ComposeEmailModal
-                isOpen={showComposeEmailModal}
-                onClose={() => setShowComposeEmailModal(false)}
-                onSuccess={fetchConversations}
-            />
-
-
 
             {/* Create Ticket Modal */}
             {showCreateTicketModal && selectedConversation && (
@@ -943,12 +968,17 @@ export default function ConversationPage() {
                 </div>
             )}
 
+            <ComposeEmailModal
+                isOpen={showComposeEmailModal}
+                onClose={() => setShowComposeEmailModal(false)}
+            />
+
             {/* Filter Modal */}
             <FilterModal
                 isOpen={showFilterModal}
                 onClose={() => setShowFilterModal(false)}
                 filters={filters}
-                onApplyFilters={(newFilters) => setFilters(newFilters)}
+                onApplyFilters={setFilters}
                 mailboxes={mailboxes}
             />
         </div>

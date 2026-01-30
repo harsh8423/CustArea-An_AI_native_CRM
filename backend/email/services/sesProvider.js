@@ -28,7 +28,7 @@ class SESProvider extends BaseEmailProvider {
             });
 
             return {
-                messageId: result.emailId,
+                messageId: result.sesMessageId,
                 providerMessageId: result.sesMessageId
             };
         } catch (error) {

@@ -8,7 +8,8 @@ const {
     updateConversation,
     assignConversation,
     getConversationStats,
-    linkContactToConversation
+    linkContactToConversation,
+    deleteConversation
 } = require('../controllers/conversationController');
 const {
     listMessages,
@@ -28,6 +29,7 @@ router.post('/', createConversation);
 router.patch('/:id', updateConversation);
 router.post('/:id/assign', assignConversation);
 router.patch('/:id/link-contact', linkContactToConversation);
+router.delete('/:id', deleteConversation);
 
 // Message routes (nested under conversations)
 router.get('/:conversationId/messages', listMessages);

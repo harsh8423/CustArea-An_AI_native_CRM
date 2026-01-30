@@ -12,7 +12,8 @@ exports.listConversations = async (req, res) => {
         assignedTo, 
         limit = 50, 
         offset = 0,
-        search 
+        search,
+        contactId 
     } = req.query;
 
     try {
@@ -55,6 +56,11 @@ exports.listConversations = async (req, res) => {
             paramIndex++;
         }
 
+        if (contactId) {
+            query += ` AND c.contact_id = $${paramIndex++}`;
+            params.push(contactId);
+        }
+
         query += ` ORDER BY c.last_message_at DESC NULLS LAST, c.created_at DESC`;
         query += ` LIMIT $${paramIndex++} OFFSET $${paramIndex++}`;
         params.push(parseInt(limit), parseInt(offset));
@@ -81,6 +87,10 @@ exports.listConversations = async (req, res) => {
         if (assignedTo) {
             countQuery += ` AND c.assigned_to = $${countParamIndex++}`;
             countParams.push(assignedTo);
+        }
+        if (contactId) {
+            countQuery += ` AND c.contact_id = $${countParamIndex++}`;
+            countParams.push(contactId);
         }
 
         const countResult = await pool.query(countQuery, countParams);
@@ -327,5 +337,35 @@ exports.linkContactToConversation = async (req, res) => {
     } catch (err) {
         console.error("Error linking contact:", err);
         res.status(500).json({ error: "Failed to link contact" });
+    }
+};
+// DELETE /api/conversations/:id - Delete conversation
+exports.deleteConversation = async (req, res) => {
+    const tenantId = req.user.tenantId;
+    const { id } = req.params;
+
+    try {
+        // 1. Delete related phone calls first (since schema is SET NULL)
+        await pool.query(
+            `DELETE FROM phone_calls WHERE conversation_id = $1 AND tenant_id = $2`,
+            [id, tenantId]
+        );
+
+        // 2. Delete conversation (Cascades to messages, attachments, etc.)
+        const result = await pool.query(
+            `DELETE FROM conversations 
+             WHERE id = $1 AND tenant_id = $2
+             RETURNING id`,
+            [id, tenantId]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: "Conversation not found" });
+        }
+
+        res.json({ success: true, message: "Conversation deleted successfully" });
+    } catch (err) {
+        console.error("Error deleting conversation:", err);
+        res.status(500).json({ error: "Failed to delete conversation" });
     }
 };
