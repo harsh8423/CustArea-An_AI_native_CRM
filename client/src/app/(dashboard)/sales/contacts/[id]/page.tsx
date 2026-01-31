@@ -2,15 +2,18 @@
 
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
 import {
     ArrowLeft, Mail, Phone, MapPin, User,
     MessageSquare, Edit3, MoreHorizontal,
     Clock, Globe, Building, Check, X,
     ChevronRight, Filter, Search, Calendar,
-    Hash, ExternalLink, Activity, Info, FileText
+    Hash, ExternalLink, Activity, Info, FileText,
+    Users, Plus
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import AddToGroupModal from "@/components/contacts/AddToGroupModal";
 
 // --- Types ---
 interface Contact {
@@ -71,24 +74,28 @@ export default function ContactProfilePage() {
 
     const [contact, setContact] = useState<Contact | null>(null);
     const [conversations, setConversations] = useState<Conversation[]>([]);
+    const [groups, setGroups] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState<TabId>("overview");
 
     // Edit State
     const [isEditing, setIsEditing] = useState(false);
     const [editForm, setEditForm] = useState<Partial<Contact>>({});
+    const [isAddToGroupOpen, setIsAddToGroupOpen] = useState(false);
 
     // Fetch Data
     useEffect(() => {
         const loadData = async () => {
             setLoading(true);
             try {
-                const [contactData, historyData] = await Promise.all([
+                const [contactData, historyData, groupsData] = await Promise.all([
                     api.contacts.get(contactId),
-                    api.conversations.list({ contactId: contactId, limit: 20 })
+                    api.conversations.list({ contactId: contactId, limit: 20 }),
+                    api.contacts.getGroups(contactId)
                 ]);
                 setContact(contactData);
                 setConversations(historyData.conversations || []);
+                setGroups(groupsData.groups || []);
                 setEditForm(contactData);
             } catch (err) {
                 console.error("Failed to load contact data", err);
@@ -103,8 +110,16 @@ export default function ContactProfilePage() {
     }, [contactId]);
 
     const handleSave = async () => {
-        setContact(prev => ({ ...prev!, ...editForm } as Contact));
-        setIsEditing(false);
+        try {
+            // Call API to update contact
+            await api.contacts.update(contactId, editForm);
+            // Update local state
+            setContact(prev => ({ ...prev!, ...editForm } as Contact));
+            setIsEditing(false);
+        } catch (err) {
+            console.error("Failed to save contact", err);
+            // Optionally show error to user
+        }
     };
 
     if (loading) return (
@@ -138,12 +153,32 @@ export default function ContactProfilePage() {
                             </div>
                         )}
                         <div className="flex items-center gap-3 mt-8 w-full">
-                            <button className="flex-1 py-2.5 text-sm font-semibold bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all shadow-[0_4px_14px_0_rgba(37,99,235,0.2)]">
-                                Message
-                            </button>
-                            <button className="flex-1 py-2.5 text-sm font-semibold bg-[#F2F4F7] text-gray-700 rounded-xl hover:bg-gray-200 transition-all">
-                                Call
-                            </button>
+                            {contact.email ? (
+                                <Link href={`/conversation?compose=true&to=${encodeURIComponent(contact.email)}&contactId=${contact.id}&name=${encodeURIComponent(displayName)}`} className="flex-1">
+                                    <button className="w-full py-2.5 text-sm font-semibold bg-gradient-to-r from-orange-500 to-orange-600 text-white rounded-xl hover:opacity-90 transition-all shadow-[0_4px_14px_0_rgba(249,115,22,0.2)] flex items-center justify-center gap-2">
+                                        <Mail className="h-4 w-4" />
+                                        Send Email
+                                    </button>
+                                </Link>
+                            ) : (
+                                <button disabled className="flex-1 py-2.5 text-sm font-semibold bg-gray-200 text-gray-400 rounded-xl cursor-not-allowed flex items-center justify-center gap-2">
+                                    <Mail className="h-4 w-4" />
+                                    No Email
+                                </button>
+                            )}
+                            {contact.phone ? (
+                                <Link href={`/phone-calls?tab=dialer&open=true&phone=${encodeURIComponent(contact.phone)}&contactId=${contact.id}&name=${encodeURIComponent(displayName)}`} className="flex-1">
+                                    <button className="w-full py-2.5 text-sm font-semibold bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl hover:opacity-90 transition-all shadow-[0_4px_14px_0_rgba(59,130,246,0.2)] flex items-center justify-center gap-2">
+                                        <Phone className="h-4 w-4" />
+                                        Call
+                                    </button>
+                                </Link>
+                            ) : (
+                                <button disabled className="flex-1 py-2.5 text-sm font-semibold bg-gray-200 text-gray-400 rounded-xl cursor-not-allowed flex items-center justify-center gap-2">
+                                    <Phone className="h-4 w-4" />
+                                    No Phone
+                                </button>
+                            )}
                         </div>
                     </div>
 
@@ -195,7 +230,7 @@ export default function ContactProfilePage() {
 
                     {activeTab === "overview" && (
                         <button
-                            onClick={() => setIsEditing(!isEditing)}
+                            onClick={() => isEditing ? handleSave() : setIsEditing(true)}
                             className={cn(
                                 "px-5 py-2.5 text-sm font-semibold rounded-xl transition-all flex items-center gap-2",
                                 isEditing
@@ -220,31 +255,47 @@ export default function ContactProfilePage() {
                                 <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider pl-2">Contact Details</h3>
                                 <div className="bg-[#F9FAFB] rounded-2xl p-2 space-y-1">
                                     <PropertyItem
+                                        icon={User}
+                                        label="Name"
+                                        value={isEditing ? editForm.name : contact.name}
+                                        isEditing={isEditing}
+                                        onChange={(v) => setEditForm(prev => ({ ...prev, name: v }))}
+                                    />
+                                    <PropertyItem
+                                        icon={Building}
+                                        label="Company"
+                                        value={isEditing ? editForm.company_name : contact.company_name}
+                                        isEditing={isEditing}
+                                        onChange={(v) => setEditForm(prev => ({ ...prev, company_name: v }))}
+                                    />
+                                    <PropertyItem
                                         icon={Mail}
                                         label="Email"
-                                        value={contact.email}
+                                        value={isEditing ? editForm.email : contact.email}
                                         isEditing={isEditing}
                                         onChange={(v) => setEditForm(prev => ({ ...prev, email: v }))}
                                     />
                                     <PropertyItem
                                         icon={Phone}
                                         label="Phone"
-                                        value={contact.phone}
+                                        value={isEditing ? editForm.phone : contact.phone}
                                         isEditing={isEditing}
                                         onChange={(v) => setEditForm(prev => ({ ...prev, phone: v }))}
                                     />
                                     <PropertyItem
                                         icon={Globe}
                                         label="Website"
-                                        value={contact.metadata?.website}
+                                        value={isEditing ? editForm.metadata?.website : contact.metadata?.website}
                                         isEditing={isEditing}
+                                        onChange={(v) => setEditForm(prev => ({ ...prev, metadata: { ...prev.metadata, website: v } }))}
                                         type="text"
                                     />
                                     <PropertyItem
                                         icon={MapPin}
                                         label="Location"
-                                        value={contact.metadata?.location}
+                                        value={isEditing ? editForm.metadata?.location : contact.metadata?.location}
                                         isEditing={isEditing}
+                                        onChange={(v) => setEditForm(prev => ({ ...prev, metadata: { ...prev.metadata, location: v } }))}
                                     />
                                 </div>
                             </section>
@@ -281,6 +332,47 @@ export default function ContactProfilePage() {
                                                 {tag.trim()}
                                             </span>
                                         ))}
+                                    </div>
+                                </section>
+
+                                {/* Groups Section */}
+                                <section className="space-y-6">
+                                    <div className="flex items-center justify-between px-2">
+                                        <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Groups</h3>
+                                        <button
+                                            onClick={() => setIsAddToGroupOpen(true)}
+                                            className="text-xs font-semibold text-blue-600 hover:text-blue-700 flex items-center gap-1 transition-colors"
+                                        >
+                                            <Plus className="h-3.5 w-3.5" />
+                                            Add to Group
+                                        </button>
+                                    </div>
+                                    <div className="bg-[#F9FAFB] rounded-2xl p-4">
+                                        {groups.length === 0 ? (
+                                            <div className="text-center py-6">
+                                                <Users className="h-8 w-8 text-gray-300 mx-auto mb-2" />
+                                                <p className="text-sm text-gray-500 mb-3">Not in any groups yet</p>
+                                                <button
+                                                    onClick={() => setIsAddToGroupOpen(true)}
+                                                    className="text-sm font-semibold text-blue-600 hover:text-blue-700 flex items-center gap-1 mx-auto"
+                                                >
+                                                    <Plus className="h-4 w-4" />
+                                                    Add to a group
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <div className="flex flex-wrap gap-2">
+                                                {groups.map((group: any) => (
+                                                    <div
+                                                        key={group.id}
+                                                        className="inline-flex items-center gap-2 px-4 py-2 bg-white hover:bg-gray-50 rounded-xl border border-gray-200 text-sm font-medium text-gray-700 shadow-sm transition-all cursor-default"
+                                                    >
+                                                        <Users className="h-3.5 w-3.5 text-gray-400" />
+                                                        <span>{group.name}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
                                     </div>
                                 </section>
                             </div>
@@ -370,6 +462,23 @@ export default function ContactProfilePage() {
 
                 </div>
             </main>
+
+            {/* Add to Group Modal */}
+            <AddToGroupModal
+                isOpen={isAddToGroupOpen}
+                onClose={() => setIsAddToGroupOpen(false)}
+                contactIds={contact ? [contact.id] : []}
+                onSuccess={async () => {
+                    setIsAddToGroupOpen(false);
+                    // Reload groups
+                    try {
+                        const groupsData = await api.contacts.getGroups(contactId);
+                        setGroups(groupsData.groups || []);
+                    } catch (err) {
+                        console.error("Failed to reload groups", err);
+                    }
+                }}
+            />
         </div>
     );
 }

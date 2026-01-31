@@ -576,7 +576,6 @@ CREATE TABLE phone_calls (
 CREATE INDEX IF NOT EXISTS idx_phone_calls_tenant ON phone_calls(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_phone_calls_conversation ON phone_calls(conversation_id);
 CREATE INDEX IF NOT EXISTS idx_phone_calls_contact ON phone_calls(contact_id);
-CREATE INDEX IF NOT EXISTS idx_phone_calls_call_sid ON phone_calls(call_sid);
 CREATE INDEX IF NOT EXISTS idx_phone_calls_status ON phone_calls(tenant_id, status);
 CREATE INDEX IF NOT EXISTS idx_phone_calls_started ON phone_calls(tenant_id, started_at DESC);
 

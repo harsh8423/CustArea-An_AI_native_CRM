@@ -74,6 +74,7 @@ const routes: Route[] = [
         subItems: [
             { label: "Contacts", href: "/sales/contacts", icon: Users },
             { label: "Leads", href: "/sales/leads", icon: Users },
+            { label: "Groups", href: "/sales/contact-groups", icon: Users },
             { label: "Lead Board", href: "/sales/lead-board", icon: Users },
         ]
     },
@@ -100,6 +101,8 @@ const routes: Route[] = [
         subItems: [
             { label: "Dialer", href: "/phone-calls?tab=dialer", icon: Phone },
             { label: "Logs", href: "/phone-calls?tab=logs", icon: Phone },
+            { label: "Voice Agents", href: "/voice-agents", icon: Bot },
+            { label: "Phone Numbers", href: "/voice-agents?tab=numbers", icon: Phone },
         ]
     },
     {

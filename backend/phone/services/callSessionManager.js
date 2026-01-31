@@ -9,7 +9,7 @@ const { v4: uuidv4 } = require('uuid');
  * CallSession - Represents state for a single phone call
  */
 class CallSession {
-    constructor(id, tenantId, contactId, method, direction) {
+    constructor(id, tenantId, contactId, method, direction, fromNumber = null, toNumber = null, customInstruction = null) {
         this.id = id;                     // Unique session ID
         this.tenantId = tenantId;         // Tenant for AI Agent config
         this.contactId = contactId;       // Contact for context loading
@@ -18,6 +18,9 @@ class CallSession {
         this.streamSid = null;            // Twilio stream SID
         this.method = method;             // 'legacy' | 'realtime' | 'convrelay'
         this.direction = direction;       // 'inbound' | 'outbound'
+        this.fromNumber = fromNumber;     // Phone number calling from
+        this.toNumber = toNumber;         // Phone number calling to
+        this.customInstruction = customInstruction;  // Per-call custom AI instruction
         this.history = [];                // Message history for LLM context
         this.startTime = Date.now();
         this.endTime = null;
@@ -102,12 +105,12 @@ class CallSessionManager {
     /**
      * Create a new call session
      */
-    create(tenantId, contactId, method, direction = 'outbound') {
+    create(tenantId, contactId, method, direction = 'outbound', fromNumber = null, toNumber = null, customInstruction = null) {
         const id = uuidv4();
-        const session = new CallSession(id, tenantId, contactId, method, direction);
+        const session = new CallSession(id, tenantId, contactId, method, direction, fromNumber, toNumber, customInstruction);
         this.sessions.set(id, session);
         
-        console.log(`[CallSession] Created session ${id} (${method}, ${direction})`);
+        console.log(`[CallSession] Created session ${id} (${method}, ${direction}, to: ${toNumber})`);
         return session;
     }
 

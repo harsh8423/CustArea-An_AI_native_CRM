@@ -1,7 +1,8 @@
-import { MoreHorizontal, Star, MapPin, Eye } from "lucide-react";
+import { MoreHorizontal, Star, MapPin, Eye, Mail, Phone } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { api } from "@/lib/api";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 export interface Contact {
     id: string;
@@ -190,6 +191,30 @@ export function ContactTable({
                                                                     {tag}
                                                                 </span>
                                                             )) : <span className="text-gray-300 text-sm">No segments</span>}
+                                                        </div>
+                                                    </td>
+                                                );
+                                            }
+
+                                            // Actions column - email and phone icons
+                                            if (col.id === 'actions') {
+                                                return (
+                                                    <td key={col.id} className="px-4 py-3">
+                                                        <div className="flex items-center gap-1">
+                                                            {contact.email && (
+                                                                <Link href={`/conversation?compose=true&to=${encodeURIComponent(contact.email)}&contactId=${contact.id}&name=${encodeURIComponent(contact.name || '')}`}>
+                                                                    <button className="p-1.5 hover:bg-blue-50 rounded-lg group transition">
+                                                                        <Mail className="h-4 w-4 text-gray-400 group-hover:text-blue-600 transition" />
+                                                                    </button>
+                                                                </Link>
+                                                            )}
+                                                            {contact.phone && (
+                                                                <Link href={`/phone-calls?tab=dialer&open=true&phone=${encodeURIComponent(contact.phone)}&contactId=${contact.id}&name=${encodeURIComponent(contact.name || '')}`}>
+                                                                    <button className="p-1.5 hover:bg-green-50 rounded-lg group transition">
+                                                                        <Phone className="h-4 w-4 text-gray-400 group-hover:text-green-600 transition" />
+                                                                    </button>
+                                                                </Link>
+                                                            )}
                                                         </div>
                                                     </td>
                                                 );

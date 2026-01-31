@@ -32,10 +32,15 @@ exports.listMessages = async (req, res) => {
                 mem.to_addresses,
                 mem.cc_addresses,
                 mem.bcc_addresses,
-                mem.subject as email_subject
+                mem.subject as email_subject,
+                pc.call_summary,
+                pc.duration_seconds as call_duration,
+                pc.call_sid
             FROM messages m
             LEFT JOIN attachments a ON a.message_id = m.id
             LEFT JOIN message_email_metadata mem ON mem.message_id = m.id
+            LEFT JOIN message_phone_metadata mpm ON mpm.message_id = m.id
+            LEFT JOIN phone_calls pc ON pc.call_sid = mpm.call_sid
             WHERE m.conversation_id = $1 AND m.tenant_id = $2
         `;
         const params = [conversationId, tenantId];
@@ -58,12 +63,21 @@ exports.listMessages = async (req, res) => {
 
         // Group attachments and merge metadata
         const messagesMap = new Map();
+        let callSummary = null;
+        
         for (const row of result.rows) {
             const msgId = row.id;
+            
+            // Capture call_summary from any message (same for all messages in a call)
+            if (row.call_summary && !callSummary) {
+                callSummary = row.call_summary;
+            }
+            
             if (!messagesMap.has(msgId)) {
                 const { 
                     attachment_id, attachment_filename, attachment_content_type, attachment_size, 
                     from_address, to_addresses, cc_addresses, bcc_addresses, email_subject,
+                    call_summary, call_duration, call_sid,
                     ...msg 
                 } = row;
                 
@@ -73,7 +87,9 @@ exports.listMessages = async (req, res) => {
                 if (to_addresses) metadata.to_addresses = to_addresses;
                 if (cc_addresses) metadata.cc_addresses = cc_addresses;
                 if (bcc_addresses) metadata.bcc_addresses = bcc_addresses;
-                if (email_subject) metadata.subject = email_subject; // Use specific email subject if available
+                if (email_subject) metadata.subject = email_subject;
+                if (call_duration) metadata.call_duration_seconds = call_duration;
+                if (call_sid) metadata.call_sid = call_sid;
                 
                 messagesMap.set(msgId, { ...msg, metadata, attachments: [] });
             }
@@ -87,7 +103,10 @@ exports.listMessages = async (req, res) => {
             }
         }
 
-        res.json({ messages: Array.from(messagesMap.values()) });
+        res.json({ 
+            messages: Array.from(messagesMap.values()),
+            callSummary: callSummary  // Include call summary if this is a phone conversation
+        });
     } catch (err) {
         console.error("Error listing messages:", err);
         res.status(500).json({ error: "Failed to list messages" });

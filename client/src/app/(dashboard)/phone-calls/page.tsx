@@ -2,8 +2,9 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import {
-    Phone, Search, RefreshCw, MessageSquare
+    Phone, Search, RefreshCw, MessageSquare, Users, AlertCircle
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -11,7 +12,7 @@ import dynamic from 'next/dynamic';
 import { PhoneLogView } from "@/components/conversation/PhoneLogView";
 
 // Dynamic import PhoneModal to avoid SSR issues with Twilio SDK
-const PhoneModal = dynamic(() => import('@/components/PhoneModal'), { ssr: false });
+const PhoneModal = dynamic(() => import('@/components/phone/PhoneModal'), { ssr: false });
 
 interface Conversation {
     id: string;
@@ -43,13 +44,23 @@ export default function PhoneCallsPage() {
     const searchParams = useSearchParams();
     const tab = searchParams.get("tab") || "dialer";
 
+    // URL params for auto-opening phone modal with pre-filled number
+    const autoOpen = searchParams.get("open") === "true";
+    const prefillPhone = searchParams.get("phone") || "";
+    const prefillContactId = searchParams.get("contactId") || "";
+    const prefillName = searchParams.get("name") || "";
+
     const [showPhoneModal, setShowPhoneModal] = useState(false);
     const [loading, setLoading] = useState(false);
     const [phoneConversations, setPhoneConversations] = useState<Conversation[]>([]);
     const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
     const [messages, setMessages] = useState<Message[]>([]);
+    const [callSummary, setCallSummary] = useState<string | null>(null);
     const [loadingMessages, setLoadingMessages] = useState(false);
     const [searchQuery, setSearchQuery] = useState("");
+    const [hasActiveBulkJob, setHasActiveBulkJob] = useState(false);
+    const [checkingBulkJob, setCheckingBulkJob] = useState(true);
+    const router = useRouter();
 
     const fetchPhoneConversations = useCallback(async () => {
         setLoading(true);
@@ -74,6 +85,7 @@ export default function PhoneCallsPage() {
         try {
             const res = await api.conversations.getMessages(conversationId, { limit: 50 });
             setMessages(res.messages || []);
+            setCallSummary(res.callSummary || null);
         } catch (err) {
             console.error("Failed to fetch messages:", err);
         } finally {
@@ -81,17 +93,59 @@ export default function PhoneCallsPage() {
         }
     }, []);
 
+    // Check for active bulk jobs
+    const checkActiveBulkJob = useCallback(async () => {
+        try {
+            const token = localStorage.getItem('token');
+            const response = await fetch(`http://localhost:8000/api/phone/bulk-jobs?status=processing&limit=1`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+
+            if (!response.ok) throw new Error('Failed to check bulk jobs');
+
+            const data = await response.json();
+            const hasActive = data.jobs && data.jobs.length > 0;
+            setHasActiveBulkJob(hasActive);
+            setCheckingBulkJob(false);
+        } catch (err) {
+            console.error("Failed to check bulk jobs:", err);
+            setCheckingBulkJob(false);
+        }
+    }, []);
+
     useEffect(() => {
         if (tab === "logs") {
             fetchPhoneConversations();
         }
-    }, [tab, fetchPhoneConversations]);
+
+        // Only check for active bulk jobs when on dialer tab
+        if (tab === "dialer") {
+            checkActiveBulkJob();
+
+            // Poll for active bulk jobs every 10 seconds (reduced from 5)
+            const interval = setInterval(() => {
+                checkActiveBulkJob();
+            }, 10000);
+
+            return () => clearInterval(interval);
+        } else {
+            // Clear bulk job state when not on dialer tab
+            setHasActiveBulkJob(false);
+        }
+    }, [tab, fetchPhoneConversations, checkActiveBulkJob]);
 
     useEffect(() => {
         if (selectedConversation) {
             fetchMessages(selectedConversation.id);
         }
     }, [selectedConversation, fetchMessages]);
+
+    // Auto-open phone modal if URL params indicate it (from contact page navigation)
+    useEffect(() => {
+        if (autoOpen && prefillPhone) {
+            setShowPhoneModal(true);
+        }
+    }, [autoOpen, prefillPhone]);
 
     const filteredConversations = phoneConversations.filter(conv => {
         if (!searchQuery) return true;
@@ -132,30 +186,60 @@ export default function PhoneCallsPage() {
                                 <h3 className="font-semibold text-gray-900">Phone Dialer</h3>
                                 <p className="text-xs text-gray-400 mt-0.5">Make calls with Human or AI agents</p>
                             </div>
-                            <button
-                                onClick={() => setShowPhoneModal(true)}
-                                className="px-4 py-2 bg-gradient-to-r from-blue-500 to-indigo-600 hover:opacity-90 text-white rounded-xl transition-all duration-200 text-sm font-medium flex items-center gap-2"
-                            >
-                                <Phone className="h-4 w-4" />
-                                Open Dialer
-                            </button>
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={() => router.push('/phone-calls/bulk')}
+                                    className="px-4 py-2 bg-gradient-to-r from-purple-500 to-indigo-600 hover:opacity-90 text-white rounded-xl transition-all duration-200 text-sm font-medium flex items-center gap-2"
+                                >
+                                    <Users className="h-4 w-4" />
+                                    Bulk Calling
+                                </button>
+                                <button
+                                    onClick={() => setShowPhoneModal(true)}
+                                    disabled={hasActiveBulkJob}
+                                    className="px-4 py-2 bg-gradient-to-r from-blue-500 to-indigo-600 hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl transition-all duration-200 text-sm font-medium flex items-center gap-2"
+                                    title={hasActiveBulkJob ? "Cannot make calls while bulk job is active" : "Open Dialer"}
+                                >
+                                    <Phone className="h-4 w-4" />
+                                    Open Dialer
+                                </button>
+                            </div>
                         </div>
 
                         {/* Dialer Content */}
                         <div className="flex-1 flex items-center justify-center p-6 bg-gradient-to-b from-gray-50/30 to-gray-50/50">
                             <div className="text-center max-w-md">
-                                <div className="h-20 w-20 rounded-3xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center mb-5 shadow-lg mx-auto">
-                                    <Phone className="h-9 w-9 text-white" />
-                                </div>
-                                <h3 className="text-lg font-semibold text-gray-600 mb-2">Make a Phone Call</h3>
-                                <p className="text-sm text-gray-400 mb-6">Click the button above to open the dialer and make calls with Human or AI agents</p>
-                                <button
-                                    onClick={() => setShowPhoneModal(true)}
-                                    className="px-6 py-3 bg-gradient-to-r from-blue-500 to-indigo-600 hover:opacity-90 text-white rounded-xl transition-all duration-200 font-medium flex items-center gap-2 mx-auto shadow-sm shadow-blue-500/20"
-                                >
-                                    <Phone className="h-5 w-5" />
-                                    Open Dialer
-                                </button>
+                                {hasActiveBulkJob ? (
+                                    <>
+                                        <div className="h-20 w-20 rounded-3xl bg-gradient-to-br from-yellow-500 to-orange-500 flex items-center justify-center mb-5 shadow-lg mx-auto">
+                                            <AlertCircle className="h-9 w-9 text-white" />
+                                        </div>
+                                        <h3 className="text-lg font-semibold text-gray-600 mb-2">Bulk Job In Progress</h3>
+                                        <p className="text-sm text-gray-400 mb-6">A bulk calling campaign is currently running. Regular calls are disabled.</p>
+                                        <button
+                                            onClick={() => router.push('/phone-calls/bulk')}
+                                            className="px-6 py-3 bg-gradient-to-r from-purple-500 to-indigo-600 hover:opacity-90 text-white rounded-xl transition-all duration-200 font-medium flex items-center gap-2 mx-auto shadow-sm shadow-purple-500/20"
+                                        >
+                                            <Users className="h-5 w-5" />
+                                            View Bulk Job Progress
+                                        </button>
+                                    </>
+                                ) : (
+                                    <>
+                                        <div className="h-20 w-20 rounded-3xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center mb-5 shadow-lg mx-auto">
+                                            <Phone className="h-9 w-9 text-white" />
+                                        </div>
+                                        <h3 className="text-lg font-semibold text-gray-600 mb-2">Make a Phone Call</h3>
+                                        <p className="text-sm text-gray-400 mb-6">Click the button above to open the dialer and make calls with Human or AI agents</p>
+                                        <button
+                                            onClick={() => setShowPhoneModal(true)}
+                                            className="px-6 py-3 bg-gradient-to-r from-blue-500 to-indigo-600 hover:opacity-90 text-white rounded-xl transition-all duration-200 font-medium flex items-center gap-2 mx-auto shadow-sm shadow-blue-500/20"
+                                        >
+                                            <Phone className="h-5 w-5" />
+                                            Open Dialer
+                                        </button>
+                                    </>
+                                )}
                             </div>
                         </div>
                     </div>
@@ -290,7 +374,17 @@ export default function PhoneCallsPage() {
                                                 <p className="text-xs text-gray-400 mt-1">Call details will appear here</p>
                                             </div>
                                         ) : (
-                                            <PhoneLogView messages={messages} />
+                                            <PhoneLogView
+                                                messages={messages}
+                                                conversationId={selectedConversation?.id}
+                                                callSummary={callSummary}
+                                                onDelete={() => {
+                                                    fetchPhoneConversations();
+                                                    setSelectedConversation(null);
+                                                    setMessages([]);
+                                                    setCallSummary(null);
+                                                }}
+                                            />
                                         )}
                                     </div>
                                 </>
@@ -312,7 +406,14 @@ export default function PhoneCallsPage() {
             <PhoneModal
                 isOpen={showPhoneModal}
                 onClose={() => setShowPhoneModal(false)}
+                onCallStart={() => {
+                    // Close modal when AI call starts
+                    setShowPhoneModal(false);
+                }}
                 onCallEnd={fetchPhoneConversations}
+                prefillPhone={prefillPhone}
+                contactId={prefillContactId}
+                contactName={prefillName}
             />
         </div>
     );

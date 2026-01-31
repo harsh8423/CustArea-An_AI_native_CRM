@@ -21,19 +21,24 @@ app.use(
 // Module imports
 const { authRoutes, newAuthRoutes } = require('./auth'); // Auth module
 const { routes: emailRoutes, gmailOAuthRoutes, outlookOAuthRoutes } = require('./email'); // Email module
+const bulkEmailRoutes = require('./email/routes/bulkEmailRoutes'); // Bulk email routes
+const emailHistoryRoutes = require('./email/routes/emailHistoryRoutes'); // Email history routes
 const { conversationRoutes, conversationEmailRoutes, messageRoutes } = require('./conversations'); // Conversations module
 
 // Remaining individual routes
 const importRoutes = require('./routes/importRoutes');
 const contactRoutes = require('./routes/contactRoutes');
+const contactGroupRoutes = require('./routes/contactGroupRoutes');
 const leadRoutes = require('./routes/leadRoutes');
 const webhookRoutes = require('./routes/webhookRoutes');
+const bulkPhoneCallRoutes = require('./phone/routes/bulkPhoneCallRoutes'); // Bulk phone calling routes
 const channelRoutes = require('./routes/channelRoutes');
 const agentRoutes = require('./ai-agent/routes/agentRoutes');
 const ticketRoutes = require('./routes/ticketRoutes');
 const ticketTagRoutes = require('./routes/ticketTagRoutes');
 const macroRoutes = require('./routes/macroRoutes');
 const featureRoutes = require('./routes/featureRoutes');
+const { routes: voiceAgentRoutes } = require('./voice-agents'); // Voice agent module
 
 // MongoDB connection for AI Agent
 const { connectMongoDB } = require('./config/mongodb');
@@ -47,8 +52,11 @@ app.use('/api/settings/email/outlook', outlookOAuthRoutes); // Outlook OAuth
 app.use('/oauth/microsoft', outlookOAuthRoutes); // OAuth callback endpoint
 app.use('/api/import', importRoutes);
 app.use('/api/contacts', contactRoutes);
+app.use('/api/contact-groups', contactGroupRoutes);
 app.use('/api/leads', leadRoutes);
 app.use('/api/email', emailRoutes);
+app.use('/api/email', bulkEmailRoutes); // Bulk email endpoints
+app.use('/api/email', emailHistoryRoutes); // Email history endpoints
 app.use('/api/conversations', conversationRoutes);
 app.use('/api/messages', messageRoutes);
 app.use('/api/conversation-email', conversationEmailRoutes);
@@ -59,6 +67,8 @@ app.use('/api/tickets', ticketRoutes);
 app.use('/api/ticket-tags', ticketTagRoutes);
 app.use('/api/macros', macroRoutes);
 app.use('/api/features', featureRoutes);
+app.use('/api/phone', bulkPhoneCallRoutes); // Bulk phone call endpoints
+app.use('/api', voiceAgentRoutes); // Voice agents, phone numbers, models
 
 // AI Processing routes (for Lambda integration)
 const aiProcessingController = require('./controllers/aiProcessingController');
@@ -163,6 +173,15 @@ const server = app.listen(port, async () => {
     runAiIncomingWorker().catch(err => {
       console.error('AI Incoming worker error:', err);
     });
+    
+    // Start bulk email worker
+    const bulkEmailWorker = require('./email/workers/bulkEmailWorker');
+    console.log('✓ Bulk email worker started');
+    
+    // Start bulk phone call worker
+    const bulkPhoneCallWorker = require('./phone/workers/bulkCallWorker');
+    console.log(' Bulk phone call worker started');
+
     console.log('✓ All workers started');
   } catch (err) {
     console.error('Failed to initialize workers:', err);
@@ -171,7 +190,7 @@ const server = app.listen(port, async () => {
 
 
 // Phone module with AI Agent integration
-const { setupLegacyHandler, setupRealtimeHandler, setupConvRelayHandler, routes: phoneRoutes } = require('./phone');
+const { setupLegacyHandler, setupRealtimeHandler, routes: phoneRoutes } = require('./phone');
 
 const url = require('url');
 
@@ -183,7 +202,6 @@ app.use('/make-call', require('./routes/outbound'));
 // Phone module WebSocket handlers (with AI Agent integration)
 const phoneLegacyWss = setupLegacyHandler();
 const phoneRealtimeWss = setupRealtimeHandler();
-const phoneConvRelayWss = setupConvRelayHandler();
 
 
 server.on('upgrade', (request, socket, head) => {
@@ -199,10 +217,6 @@ server.on('upgrade', (request, socket, head) => {
   } else if (pathname.startsWith('/phone-ws/realtime/')) {
     phoneRealtimeWss.handleUpgrade(request, socket, head, (ws) => {
       phoneRealtimeWss.emit('connection', ws, request);
-    });
-  } else if (pathname.startsWith('/phone-ws/convrelay/')) {
-    phoneConvRelayWss.handleUpgrade(request, socket, head, (ws) => {
-      phoneConvRelayWss.emit('connection', ws, request);
     });
   } else {
     socket.destroy();

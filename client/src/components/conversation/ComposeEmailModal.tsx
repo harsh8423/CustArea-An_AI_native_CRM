@@ -1,13 +1,15 @@
-"use client"
-
 import { useState, useEffect } from "react";
-import { X, Mail, Send, User, AlertCircle } from "lucide-react";
+import { X, Mail, Send, User, AlertCircle, Users } from "lucide-react";
 import { api } from "@/lib/api";
+import BulkEmailProgressModal from "./BulkEmailProgressModal";
 
 interface ComposeEmailModalProps {
     isOpen: boolean;
     onClose: () => void;
     onSuccess?: () => void;
+    prefillTo?: string;  // Pre-filled recipient email from URL params
+    contactId?: string;  // Contact ID for tracking
+    contactName?: string;  // Contact name for display
 }
 
 interface SenderAddress {
@@ -19,7 +21,7 @@ interface SenderAddress {
     isDefault: boolean;
 }
 
-export function ComposeEmailModal({ isOpen, onClose, onSuccess }: ComposeEmailModalProps) {
+export function ComposeEmailModal({ isOpen, onClose, onSuccess, prefillTo, contactId, contactName }: ComposeEmailModalProps) {
     const [senderAddresses, setSenderAddresses] = useState<SenderAddress[]>([]);
     const [loading, setLoading] = useState(false);
     const [sending, setSending] = useState(false);
@@ -35,11 +37,45 @@ export function ComposeEmailModal({ isOpen, onClose, onSuccess }: ComposeEmailMo
 
     const [showCCBCC, setShowCCBCC] = useState(false);
 
+    // Bulk email state
+    const [sendMode, setSendMode] = useState<'single' | 'group'>('single');
+    const [groups, setGroups] = useState<any[]>([]);
+    const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
+    const [loadingGroups, setLoadingGroups] = useState(false);
+    const [bulkJobId, setBulkJobId] = useState<string | null>(null);
+    const [showProgressModal, setShowProgressModal] = useState(false);
+
     useEffect(() => {
         if (isOpen) {
             fetchSenderAddresses();
         }
     }, [isOpen]);
+
+    // Pre-fill recipient email when provided (from contact page navigation)
+    useEffect(() => {
+        if (isOpen && prefillTo) {
+            setForm(prev => ({ ...prev, to: prefillTo }));
+        }
+    }, [isOpen, prefillTo]);
+
+    // Fetch groups when modal opens in group mode
+    useEffect(() => {
+        if (isOpen && sendMode === 'group') {
+            fetchGroups();
+        }
+    }, [isOpen, sendMode]);
+
+    const fetchGroups = async () => {
+        setLoadingGroups(true);
+        try {
+            const data = await api.contactGroups.list();
+            setGroups(data.groups || []);
+        } catch (err) {
+            console.error('Failed to fetch groups:', err);
+        } finally {
+            setLoadingGroups(false);
+        }
+    };
 
     const fetchSenderAddresses = async () => {
         setLoading(true);
@@ -62,43 +98,97 @@ export function ComposeEmailModal({ isOpen, onClose, onSuccess }: ComposeEmailMo
     };
 
     const handleSend = async () => {
-        if (!form.to || !form.from || !form.subject || !form.body) {
-            alert("Please fill in all required fields");
-            return;
-        }
+        if (sendMode === 'group') {
+            // Bulk send validation
+            if (!selectedGroupId || !form.from || !form.subject || !form.body) {
+                alert("Please select a group and fill in all required fields");
+                return;
+            }
 
-        setSending(true);
-        try {
-            await api.conversationEmail.sendEmail({
-                from: form.from,
-                to: form.to,
-                cc: form.cc || undefined,
-                bcc: form.bcc || undefined,
-                subject: form.subject,
-                body: form.body
-            });
+            const selectedGroup = groups.find(g => g.id === selectedGroupId);
+            if (!selectedGroup) return;
 
-            // Reset form
-            setForm({
-                from: senderAddresses.find(a => a.isDefault)?.email || senderAddresses[0]?.email || "",
-                to: "",
-                cc: "",
-                bcc: "",
-                subject: "",
-                body: ""
-            });
+            const confirmed = confirm(
+                `Send this email to all ${selectedGroup.contact_count || 0} contacts in "${selectedGroup.name}"?\n\nThis action cannot be undone.`
+            );
 
-            onSuccess?.();
-            onClose();
-        } catch (err: any) {
-            console.error("Failed to send email:", err);
-            alert(`Failed to send email: ${err.message || "Unknown error"}`);
-        } finally {
-            setSending(false);
+            if (!confirmed) return;
+
+            setSending(true);
+            try {
+                const result = await api.bulkEmail.sendBulk({
+                    groupId: selectedGroupId,
+                    from: form.from,
+                    subject: form.subject,
+                    body: form.body,
+                    bodyText: form.body // Will be stripped of HTML by backend if needed
+                });
+
+                setBulkJobId(result.jobId);
+                setShowProgressModal(true);
+
+                // Reset form
+                setForm({
+                    from: senderAddresses.find(a => a.isDefault)?.email || senderAddresses[0]?.email || "",
+                    to: "",
+                    cc: "",
+                    bcc: "",
+                    subject: "",
+                    body: ""
+                });
+                setSendMode('single');
+                setSelectedGroupId(null);
+
+                onSuccess?.();
+                // Don't close modal - show progress instead
+            } catch (err: any) {
+                console.error("Failed to create bulk email job:", err);
+                alert(`Failed to create bulk email job: ${err.message || "Unknown error"}`);
+            } finally {
+                setSending(false);
+            }
+        } else {
+            // Single email send (existing logic)
+            if (!form.to || !form.from || !form.subject || !form.body) {
+                alert("Please fill in all required fields");
+                return;
+            }
+
+            setSending(true);
+            try {
+                await api.conversationEmail.sendEmail({
+                    from: form.from,
+                    to: form.to,
+                    cc: form.cc || undefined,
+                    bcc: form.bcc || undefined,
+                    subject: form.subject,
+                    body: form.body
+                });
+
+                // Reset form
+                setForm({
+                    from: senderAddresses.find(a => a.isDefault)?.email || senderAddresses[0]?.email || "",
+                    to: "",
+                    cc: "",
+                    bcc: "",
+                    subject: "",
+                    body: ""
+                });
+
+                onSuccess?.();
+                onClose();
+            } catch (err: any) {
+                console.error("Failed to send email:", err);
+                alert(`Failed to send email: ${err.message || "Unknown error"}`);
+            } finally {
+                setSending(false);
+            }
         }
     };
 
     if (!isOpen) return null;
+
+    const selectedGroup = groups.find(g => g.id === selectedGroupId);
 
     return (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
@@ -136,6 +226,37 @@ export function ComposeEmailModal({ isOpen, onClose, onSuccess }: ComposeEmailMo
                         </div>
                     ) : (
                         <>
+                            {/* Send Mode Toggle */}
+                            <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                                <label className="text-sm font-medium text-gray-700 mb-3 block">Send Mode</label>
+                                <div className="flex gap-4">
+                                    <label className="flex items-center gap-2 cursor-pointer">
+                                        <input
+                                            type="radio"
+                                            name="sendMode"
+                                            value="single"
+                                            checked={sendMode === 'single'}
+                                            onChange={() => setSendMode('single')}
+                                            className="w-4 h-4 text-blue-600"
+                                        />
+                                        <User className="h-4 w-4 text-gray-500" />
+                                        <span className="text-sm text-gray-700">Single Recipient</span>
+                                    </label>
+                                    <label className="flex items-center gap-2 cursor-pointer">
+                                        <input
+                                            type="radio"
+                                            name="sendMode"
+                                            value="group"
+                                            checked={sendMode === 'group'}
+                                            onChange={() => setSendMode('group')}
+                                            className="w-4 h-4 text-blue-600"
+                                        />
+                                        <Users className="h-4 w-4 text-gray-500" />
+                                        <span className="text-sm text-gray-700">Send to Group</span>
+                                    </label>
+                                </div>
+                            </div>
+
                             {/* From */}
                             <div>
                                 <label className="text-sm font-medium text-gray-700 mb-1.5 block">From</label>
@@ -152,17 +273,58 @@ export function ComposeEmailModal({ isOpen, onClose, onSuccess }: ComposeEmailMo
                                 </select>
                             </div>
 
-                            {/* To */}
-                            <div>
-                                <label className="text-sm font-medium text-gray-700 mb-1.5 block">To *</label>
-                                <input
-                                    type="email"
-                                    value={form.to}
-                                    onChange={(e) => setForm(prev => ({ ...prev, to: e.target.value }))}
-                                    placeholder="recipient@example.com"
-                                    className="w-full px-4 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-300"
-                                />
-                            </div>
+                            {sendMode === 'single' ? (
+                                <>
+                                    {/* To (Single Mode) */}
+                                    <div>
+                                        <label className="text-sm font-medium text-gray-700 mb-1.5 block">To *</label>
+                                        <input
+                                            type="email"
+                                            value={form.to}
+                                            onChange={(e) => setForm(prev => ({ ...prev, to: e.target.value }))}
+                                            placeholder="recipient@example.com"
+                                            className="w-full px-4 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-300"
+                                        />
+                                        {contactName && (
+                                            <p className="text-xs text-gray-500 mt-1">Sending to: {contactName}</p>
+                                        )}
+                                    </div>
+                                </>
+                            ) : (
+                                /* Group Selector (Group Mode) */
+                                <div>
+                                    <label className="text-sm font-medium text-gray-700 mb-1.5 block">
+                                        Select Group *
+                                    </label>
+                                    {loadingGroups ? (
+                                        <div className="px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-500">
+                                            Loading groups...
+                                        </div>
+                                    ) : groups.length === 0 ? (
+                                        <div className="px-4 py-3 bg-yellow-50 border border-yellow-200 rounded-xl text-sm text-yellow-700">
+                                            No contact groups found. Create a group first.
+                                        </div>
+                                    ) : (
+                                        <select
+                                            value={selectedGroupId || ''}
+                                            onChange={(e) => setSelectedGroupId(e.target.value || null)}
+                                            className="w-full px-4 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-300"
+                                        >
+                                            <option value="">Choose a group...</option>
+                                            {groups.map((group) => (
+                                                <option key={group.id} value={group.id}>
+                                                    {group.name} ({group.contact_count || 0} contacts)
+                                                </option>
+                                            ))}
+                                        </select>
+                                    )}
+                                    {selectedGroup && (
+                                        <p className="text-xs text-blue-600 mt-2 font-medium">
+                                            ✉️ Will send to {selectedGroup.contact_count || 0} contacts in "{selectedGroup.name}"
+                                        </p>
+                                    )}
+                                </div>
+                            )}
 
                             {/* CC/BCC Toggle */}
                             {!showCCBCC && (
@@ -241,10 +403,23 @@ export function ComposeEmailModal({ isOpen, onClose, onSuccess }: ComposeEmailMo
                         className="flex-1 px-4 py-2.5 text-sm font-medium text-white bg-gradient-to-r from-blue-500 to-indigo-600 hover:opacity-90 rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2"
                     >
                         <Send className="h-4 w-4" />
-                        {sending ? "Sending..." : "Send Email"}
+                        {sending ? (sendMode === 'group' ? 'Creating Job...' : 'Sending...') : (sendMode === 'group' ? 'Send to Group' : 'Send Email')}
                     </button>
                 </div>
             </div>
+
+            {/* Bulk Email Progress Modal */}
+            {bulkJobId && (
+                <BulkEmailProgressModal
+                    isOpen={showProgressModal}
+                    onClose={() => {
+                        setShowProgressModal(false);
+                        onClose(); // Close compose modal when progress modal closes
+                    }}
+                    jobId={bulkJobId}
+                    groupName={selectedGroup?.name || ''}
+                />
+            )}
         </div>
     );
 }

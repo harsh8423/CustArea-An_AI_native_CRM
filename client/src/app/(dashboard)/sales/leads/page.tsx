@@ -142,6 +142,12 @@ export default function LeadsPage() {
                                 Leads
                             </button>
                             <button
+                                onClick={() => router.push("/sales/contact-groups")}
+                                className="px-4 py-2 text-sm font-medium text-gray-500 hover:text-gray-900 rounded-lg transition-all duration-200"
+                            >
+                                Groups
+                            </button>
+                            <button
                                 onClick={() => router.push("/sales/lead-board")}
                                 className="px-4 py-2 text-sm font-medium text-gray-500 hover:text-gray-900 rounded-lg transition-all duration-200 flex items-center gap-1.5"
                             >

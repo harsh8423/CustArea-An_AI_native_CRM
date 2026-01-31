@@ -1,6 +1,6 @@
 import { Sidebar } from "@/components/Sidebar";
 import { FeatureProvider } from "@/contexts/FeatureContext";
-import { AuthGuard } from "@/components/AuthGuard";
+import { AuthGuard } from "@/components/phone/AuthGuard";
 
 export default function DashboardLayout({
     children,

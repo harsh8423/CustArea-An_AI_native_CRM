@@ -2,19 +2,23 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { FilterBar } from "@/components/contacts/FilterBar";
 import { ContactTable, Column, Contact } from "@/components/contacts/ContactTable";
 import { ImportWizard } from "@/components/contacts/ImportWizard";
 import { AddContactModal } from "@/components/contacts/AddContactModal";
 import { BulkActions } from "@/components/contacts/BulkActions";
 import { FilterModal } from "@/components/contacts/FilterModal";
+import AddToGroupModal from "@/components/contacts/AddToGroupModal";
 import { api } from "@/lib/api";
 
-import { User, Mail, Phone, Building, Tag, Clock, MapPin, LayoutGrid } from "lucide-react";
+import { User, Mail, Phone, Building, Tag, Clock, MapPin, LayoutGrid, Zap } from "lucide-react";
 
 const DEFAULT_COLUMNS: Column[] = [
     { id: "name", label: "Full Name", accessor: "name", visible: true, width: "200px", icon: <User className="h-3.5 w-3.5" /> },
     { id: "email", label: "Email", accessor: "email", visible: true, width: "220px", icon: <Mail className="h-3.5 w-3.5" /> },
+    { id: "phone", label: "Phone", accessor: "phone", visible: true, width: "150px", icon: <Phone className="h-3.5 w-3.5" /> },
+    { id: "actions", label: "Actions", accessor: "actions", visible: true, width: "100px", icon: <Zap className="h-3.5 w-3.5" /> },
     { id: "location", label: "Location", accessor: "metadata.location", visible: true, width: "150px", icon: <MapPin className="h-3.5 w-3.5" /> },
     { id: "company", label: "Company", accessor: "company_name", visible: true, width: "150px", icon: <Building className="h-3.5 w-3.5" /> },
     { id: "segments", label: "Segments", accessor: "metadata.segments", visible: true, width: "150px", icon: <Tag className="h-3.5 w-3.5" /> },
@@ -31,6 +35,7 @@ export default function ContactsPage() {
     const [isImportOpen, setIsImportOpen] = useState(false);
     const [isAddContactOpen, setIsAddContactOpen] = useState(false);
     const [isFilterOpen, setIsFilterOpen] = useState(false);
+    const [isAddToGroupOpen, setIsAddToGroupOpen] = useState(false);
 
     // Spreadsheet State
     const [columns, setColumns] = useState<Column[]>(DEFAULT_COLUMNS);
@@ -164,6 +169,12 @@ export default function ContactsPage() {
                                 Leads
                             </button>
                             <button
+                                onClick={() => router.push("/sales/contact-groups")}
+                                className="px-4 py-2 text-sm font-medium text-gray-500 hover:text-gray-900 rounded-lg transition-all duration-200"
+                            >
+                                Groups
+                            </button>
+                            <button
                                 onClick={() => router.push("/sales/lead-board")}
                                 className="px-4 py-2 text-sm font-medium text-gray-500 hover:text-gray-900 rounded-lg transition-all duration-200 flex items-center gap-1.5"
                             >
@@ -214,6 +225,7 @@ export default function ContactsPage() {
                             alert("Failed to add to leads");
                         }
                     }}
+                    onAddToGroup={() => setIsAddToGroupOpen(true)}
                 />
 
                 <ImportWizard
@@ -238,6 +250,16 @@ export default function ContactsPage() {
                     onClose={() => setIsFilterOpen(false)}
                     onApply={handleApplyFilters}
                     availableFields={columns.map(c => ({ id: c.id, label: c.label }))}
+                />
+
+                <AddToGroupModal
+                    isOpen={isAddToGroupOpen}
+                    onClose={() => setIsAddToGroupOpen(false)}
+                    contactIds={Array.from(selectedIds)}
+                    onSuccess={() => {
+                        setSelectedIds(new Set());
+                        setIsAddToGroupOpen(false);
+                    }}
                 />
             </div>
         </div>

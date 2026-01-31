@@ -15,12 +15,15 @@ interface PhoneModalProps {
     onClose: () => void;
     onCallStart?: (callInfo: any) => void;
     onCallEnd?: (callInfo: any) => void;
+    prefillPhone?: string;  // Pre-filled phone number from URL params
+    contactId?: string;  // Contact ID for tracking
+    contactName?: string;  // Contact name for display
 }
 
 type CallState = 'idle' | 'connecting' | 'ringing' | 'in-call' | 'incoming';
 type CallMode = 'human' | 'ai';
 
-export default function PhoneModal({ isOpen, onClose, onCallStart, onCallEnd }: PhoneModalProps) {
+export default function PhoneModal({ isOpen, onClose, onCallStart, onCallEnd, prefillPhone, contactId, contactName }: PhoneModalProps) {
     const [callState, setCallState] = useState<CallState>('idle');
     const [phoneNumber, setPhoneNumber] = useState('');
     const [callDuration, setCallDuration] = useState(0);
@@ -29,6 +32,7 @@ export default function PhoneModal({ isOpen, onClose, onCallStart, onCallEnd }: 
     const [error, setError] = useState<string | null>(null);
     const [isInitialized, setIsInitialized] = useState(false);
     const [callMode, setCallMode] = useState<CallMode>('human');
+    const [customInstruction, setCustomInstruction] = useState('');
 
     const deviceRef = useRef<Device | null>(null);
     const callRef = useRef<Call | null>(null);
@@ -114,6 +118,13 @@ export default function PhoneModal({ isOpen, onClose, onCallStart, onCallEnd }: 
         };
     }, [initializeDevice]);
 
+    // Pre-fill phone number when provided (from contact page navigation)
+    useEffect(() => {
+        if (isOpen && prefillPhone) {
+            setPhoneNumber(prefillPhone);
+        }
+    }, [isOpen, prefillPhone]);
+
     // Timer functions
     const startTimer = () => {
         setCallDuration(0);
@@ -197,7 +208,11 @@ export default function PhoneModal({ isOpen, onClose, onCallStart, onCallEnd }: 
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}`
                 },
-                body: JSON.stringify({ to: phoneNumber })
+                body: JSON.stringify({
+                    to: phoneNumber,
+                    contactId: contactId,
+                    customInstruction: customInstruction || undefined
+                })
             });
 
             if (!response.ok) {
@@ -212,8 +227,12 @@ export default function PhoneModal({ isOpen, onClose, onCallStart, onCallEnd }: 
             startTimer();
             onCallStart?.({ number: phoneNumber, direction: 'outbound', mode: 'ai', callSid: data.callSid });
 
-            // For AI calls, we just show the status - the call is handled server-side
-            // We could poll for status or use WebSockets for real updates
+            // AI calls are handled server-side, so we close the modal immediately  
+            // The call will continue in the background via Twilio
+            setTimeout(() => {
+                resetState();
+                onClose();
+            }, 500); // Small delay to show "in-call" state briefly
 
         } catch (err: any) {
             setError(err.message || 'Failed to initiate AI call');
@@ -474,6 +493,25 @@ export default function PhoneModal({ isOpen, onClose, onCallStart, onCallEnd }: 
                                 AI Call
                             </button>
                         </div>
+
+                        {/* Custom Instruction (AI Mode Only) */}
+                        {callMode === 'ai' && (
+                            <div className="mb-4">
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                    Custom Instructions (Optional)
+                                </label>
+                                <textarea
+                                    value={customInstruction}
+                                    onChange={(e) => setCustomInstruction(e.target.value)}
+                                    placeholder="e.g., Be very brief, max 10 words per response"
+                                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-200 focus:border-purple-400 text-sm resize-none"
+                                    rows={2}
+                                />
+                                <p className="text-xs text-gray-500 mt-1">
+                                    These instructions will be prioritized in the AI's behavior for this call
+                                </p>
+                            </div>
+                        )}
 
                         {/* Number input */}
                         <input

@@ -8,11 +8,12 @@ import { FilterModal } from "@/components/conversation/FilterModal";
 import { UnknownContactIndicator } from "@/components/conversation/UnknownContactIndicator";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 import {
     Mail, MessageCircle, Phone, Search, MoreHorizontal,
     Send, Paperclip, Smile, Star, ChevronDown, ChevronUp,
     User, Tag, Edit, MessageSquare, RefreshCw, Check, Sparkles,
-    Ticket, X, Zap, Filter as FilterIcon, Trash, Reply
+    Ticket, X, Zap, Filter as FilterIcon, Trash, Reply, History
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -82,6 +83,8 @@ const CHANNEL_BG: Record<string, string> = {
 
 export default function ConversationPage() {
     const { hasFeature } = useFeatures();
+    const searchParams = useSearchParams();
+
     const [conversations, setConversations] = useState<Conversation[]>([]);
     const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
     const [messages, setMessages] = useState<Message[]>([]);
@@ -98,6 +101,12 @@ export default function ConversationPage() {
     const [showComposeEmailModal, setShowComposeEmailModal] = useState(false);
     const [showReplyDrawer, setShowReplyDrawer] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
+
+    // URL params for auto-opening compose modal with pre-filled data
+    const autoCompose = searchParams.get("compose") === "true";
+    const prefillTo = searchParams.get("to") || "";
+    const prefillContactId = searchParams.get("contactId") || "";
+    const prefillName = searchParams.get("name") || "";
 
     // Filter state
     const [showFilterModal, setShowFilterModal] = useState(false);
@@ -156,10 +165,22 @@ export default function ConversationPage() {
                 api.conversations.getStats(),
                 api.macros.list(true)
             ]);
+
+            console.log('[Conversation] Total conversations fetched:', convRes.conversations?.length || 0);
+            console.log('[Conversation] Breakdown by channel:',
+                (convRes.conversations || []).reduce((acc: any, conv: Conversation) => {
+                    acc[conv.channel] = (acc[conv.channel] || 0) + 1;
+                    return acc;
+                }, {})
+            );
+
             // Filter out phone conversations - they have their own dedicated page
             const nonPhoneConversations = (convRes.conversations || []).filter(
                 (conv: Conversation) => conv.channel !== 'phone'
             );
+
+            console.log('[Conversation] After filtering phone:', nonPhoneConversations.length);
+
             setConversations(nonPhoneConversations);
             setStats(statsRes.stats);
             setAvailableMacros(macrosRes.macros || []);
@@ -195,6 +216,13 @@ export default function ConversationPage() {
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }, [messages]);
+
+    // Auto-open compose modal if URL params indicate it (from contact page navigation)
+    useEffect(() => {
+        if (autoCompose && prefillTo) {
+            setShowComposeEmailModal(true);
+        }
+    }, [autoCompose, prefillTo]);
 
     const handleSelectConversation = (conv: Conversation) => {
         setSelectedConversation(conv);
@@ -365,17 +393,25 @@ export default function ConversationPage() {
                             <div className="flex items-center gap-2">
                                 <button
                                     onClick={() => setShowComposeEmailModal(true)}
-                                    className="p-2 bg-gradient-to-r from-orange-500 to-orange-600 hover:opacity-90 text-white rounded-xl transition-all duration-200"
-                                    title="Compose email"
+                                    className="p-2.5 bg-gradient-to-r from-orange-500 to-orange-600 text-white rounded-xl hover:opacity-90 transition shadow-sm"
+                                    title="Compose Email"
                                 >
-                                    <Mail className="h-4 w-4" />
+                                    <Mail className="h-5 w-5" />
                                 </button>
+                                <a
+                                    href="/email-history"
+                                    className="p-2.5 hover:bg-gray-50 text-gray-700 rounded-xl transition"
+                                    title="Email History"
+                                >
+                                    <History className="h-5 w-5" />
+                                </a>
                                 <button
                                     onClick={fetchConversations}
-                                    className="p-2 hover:bg-gray-50 rounded-xl transition-all duration-200 group"
+                                    className="p-2.5 bg-white text-gray-700 rounded-xl hover:bg-gray-50 transition"
+                                    title="Refresh"
                                 >
                                     <RefreshCw className={cn(
-                                        "h-4 w-4 text-gray-400 group-hover:text-gray-600 transition-colors",
+                                        "h-5 w-5 text-gray-400 group-hover:text-gray-600 transition-colors",
                                         loading && "animate-spin"
                                     )} />
                                 </button>
@@ -971,6 +1007,9 @@ export default function ConversationPage() {
             <ComposeEmailModal
                 isOpen={showComposeEmailModal}
                 onClose={() => setShowComposeEmailModal(false)}
+                prefillTo={prefillTo}
+                contactId={prefillContactId}
+                contactName={prefillName}
             />
 
             {/* Filter Modal */}

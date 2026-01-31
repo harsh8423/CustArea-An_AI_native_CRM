@@ -344,12 +344,15 @@ exports.deleteConversation = async (req, res) => {
     const tenantId = req.user.tenantId;
     const { id } = req.params;
 
+    console.log('[DELETE] Attempting to delete conversation:', id, 'for tenant:', tenantId);
+
     try {
         // 1. Delete related phone calls first (since schema is SET NULL)
-        await pool.query(
-            `DELETE FROM phone_calls WHERE conversation_id = $1 AND tenant_id = $2`,
+        const phoneCallsResult = await pool.query(
+            `DELETE FROM phone_calls WHERE conversation_id = $1 AND tenant_id = $2 RETURNING id`,
             [id, tenantId]
         );
+        console.log('[DELETE] Deleted', phoneCallsResult.rowCount, 'phone_calls records');
 
         // 2. Delete conversation (Cascades to messages, attachments, etc.)
         const result = await pool.query(
@@ -359,10 +362,14 @@ exports.deleteConversation = async (req, res) => {
             [id, tenantId]
         );
 
+        console.log('[DELETE] Conversation delete result:', result.rowCount, 'rows affected');
+
         if (result.rows.length === 0) {
+            console.log('[DELETE] Conversation not found:', id);
             return res.status(404).json({ error: "Conversation not found" });
         }
 
+        console.log('[DELETE] Successfully deleted conversation:', id);
         res.json({ success: true, message: "Conversation deleted successfully" });
     } catch (err) {
         console.error("Error deleting conversation:", err);

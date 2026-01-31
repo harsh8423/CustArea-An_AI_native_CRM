@@ -24,24 +24,17 @@ export function AddContactModal({ isOpen, onClose, onSuccess }: AddContactModalP
         e.preventDefault();
         setLoading(true);
         try {
-            // Note: We need to implement api.contacts.create first, but for now we'll simulate or assume it exists
-            // Since we haven't implemented the create endpoint in the backend yet, I will add it to the plan or just log it.
-            // Wait, I should probably implement the backend endpoint too if it's missing.
-            // Checking previous steps... I only implemented list and export.
-            // I will implement a quick create endpoint in the backend as well.
-
-            // For now, let's assume the API method will be added.
-            await fetch('/api/contacts', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${document.cookie.split('token=')[1]?.split(';')[0]}` // Hacky token get
-                },
-                body: JSON.stringify(formData)
-            });
+            await api.contacts.create(formData);
 
             onSuccess();
             onClose();
+            setFormData({
+                name: "",
+                email: "",
+                phone: "",
+                company_name: "",
+                source: "Manual"
+            });
         } catch (err) {
             console.error("Failed to create contact", err);
             alert("Failed to create contact");

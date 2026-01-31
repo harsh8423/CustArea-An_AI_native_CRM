@@ -33,7 +33,7 @@ export function MessageRenderer({ conversation, messages }: MessageRendererProps
 
     // Phone channel - call log view
     if (channelType === 'phone') {
-        return <PhoneLogView messages={messages} />;
+        return <PhoneLogView messages={messages} conversationId={conversation.id} />;
     }
 
     // Default fallback - simple message list
@@ -47,8 +47,8 @@ export function MessageRenderer({ conversation, messages }: MessageRendererProps
                         className={`flex ${isOutbound ? 'justify-end' : 'justify-start'}`}
                     >
                         <div className={`max-w-[70%] rounded-2xl px-4 py-3 ${isOutbound
-                                ? 'bg-blue-500 text-white'
-                                : 'bg-white text-gray-800 border border-gray-200'
+                            ? 'bg-blue-500 text-white'
+                            : 'bg-white text-gray-800 border border-gray-200'
                             }`}>
                             <p className="text-sm whitespace-pre-wrap">{msg.content_text}</p>
                         </div>

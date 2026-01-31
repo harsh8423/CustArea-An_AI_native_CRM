@@ -144,6 +144,65 @@ exports.deleteContacts = async (req, res) => {
     }
 };
 
+exports.updateContact = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const tenantId = req.user.tenantId;
+        const { name, email, phone, company_name, metadata } = req.body;
+
+        // Build dynamic update query
+        const updates = [];
+        const params = [];
+        let paramCount = 1;
+
+        if (name !== undefined) {
+            updates.push(`name = $${paramCount++}`);
+            params.push(name);
+        }
+        if (email !== undefined) {
+            updates.push(`email = $${paramCount++}`);
+            params.push(email);
+        }
+        if (phone !== undefined) {
+            updates.push(`phone = $${paramCount++}`);
+            params.push(phone);
+        }
+        if (company_name !== undefined) {
+            updates.push(`company_name = $${paramCount++}`);
+            params.push(company_name);
+        }
+        if (metadata !== undefined) {
+            updates.push(`metadata = $${paramCount++}`);
+            params.push(JSON.stringify(metadata));
+        }
+
+        if (updates.length === 0) {
+            return res.status(400).json({ error: 'No fields to update' });
+        }
+
+        params.push(id);
+        params.push(tenantId);
+
+        const query = `
+            UPDATE contacts 
+            SET ${updates.join(', ')} 
+            WHERE id = $${paramCount++} AND tenant_id = $${paramCount++}
+            RETURNING *
+        `;
+
+        const result = await pool.query(query, params);
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Contact not found' });
+        }
+
+        res.json(result.rows[0]);
+    } catch (err) {
+        console.error('Error updating contact:', err);
+        res.status(500).json({ error: 'Failed to update contact' });
+    }
+};
+
 exports.updateScore = async (req, res) => {
     try {
         const { id } = req.params;

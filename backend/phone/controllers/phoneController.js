@@ -16,67 +16,59 @@ const { shouldAgentRespond } = require('../../controllers/agentDeploymentControl
  */
 async function initiateCall(req, res) {
     const tenantId = req.user.tenantId;
-    const { to, method = 'realtime', contactId, greeting } = req.body;
+    const { to, contactId, greeting, customInstruction } = req.body;
+    // NOTE: method is no longer accepted from request body - it comes from database
 
     if (!to) {
         return res.status(400).json({ error: 'Phone number (to) is required' });
     }
 
     try {
-        // Get tenant's Twilio credentials
+        // Get tenant's Twilio credentials and voice agent method from database
         const twilioConfig = await getTwilioConfig(tenantId);
         if (!twilioConfig) {
             return res.status(400).json({ error: 'Twilio not configured for this tenant' });
         }
 
-        // Create call session
-        const session = callSessionManager.create(tenantId, contactId, method, 'outbound');
+        // Use method from database (tenant_phone_config.default_method)
+        const method = twilioConfig.method || 'realtime';
         
-        // Store from/to numbers in session for persistence
-        session.fromNumber = twilioConfig.phoneNumber;
-        session.toNumber = to;
+        console.log(`[Phone] Outbound call using method from database: ${method}`);
 
-        // Generate WebSocket URL
-        const host = process.env.HOST || 'localhost:8000';
-        let wsPath;
-        switch (method) {
-            case 'legacy':
-                wsPath = `/phone-ws/legacy/${session.id}`;
-                break;
-            case 'convrelay':
-                wsPath = `/phone-ws/convrelay/${session.id}`;
-                break;
-            case 'realtime':
-            default:
-                wsPath = `/phone-ws/realtime/${session.id}`;
-                break;
+        // Validate method - currently only realtime is supported
+        if (method === 'legacy') {
+            return res.status(400).json({ 
+                error: 'Legacy method is currently disabled. Please update your voice agent to use realtime method in voice agent settings.',
+                hint: 'Go to Voice Agents settings and change the method to Realtime'
+            });
         }
 
+        // Create call session with phone numbers to prevent race condition
+        const session = callSessionManager.create(
+            tenantId, 
+            contactId, 
+            method, 
+            'outbound',
+            twilioConfig.phoneNumber,  // fromNumber
+            to,                         // toNumber
+            customInstruction           // customInstruction (new parameter)
+        );
+
+        // Generate WebSocket URL (always realtime)
+        const host = process.env.HOST || 'localhost:8000';
+        const wsPath = `/phone-ws/realtime/${session.id}`;
         const wsUrl = `wss://${host}${wsPath}`;
 
-        // Generate TwiML
-        let twiml;
-        if (method === 'convrelay') {
-            // ConversationRelay TwiML
-            twiml = `
-                <Response>
-                    <Connect>
-                        <ConversationRelay url="${wsUrl}" />
-                    </Connect>
-                </Response>
-            `;
-        } else {
-            // Standard Stream TwiML (for legacy and realtime)
-            const greetingText = greeting || 'Hello, please hold while we connect you.';
-            twiml = `
-                <Response>
-                    <Say voice="Google.en-US-Chirp3-HD-Leda">${greetingText}</Say>
-                    <Connect>
-                        <Stream url="${wsUrl}" />
-                    </Connect>
-                </Response>
-            `;
-        }
+        // Generate TwiML - Standard Stream for both legacy and realtime
+        const greetingText = greeting || 'Hello, please hold while we connect you.';
+        const twiml = `
+            <Response>
+                <Say voice="Google.en-US-Chirp3-HD-Leda">${greetingText}</Say>
+                <Connect>
+                    <Stream url="${wsUrl}" />
+                </Connect>
+            </Response>
+        `;
 
         // Initiate call via Twilio
         const client = twilio(twilioConfig.accountSid, twilioConfig.authToken);
@@ -169,53 +161,44 @@ async function handleInbound(req, res) {
  */
 async function routeToAI(req, res, tenant, contact, From, To, CallSid) {
     // Get configured method for tenant (default: realtime)
-    const method = tenant.phoneConfig?.method || 'realtime';
+    const method = tenant.default_method || 'realtime';
 
-    // Create session
-    const session = callSessionManager.create(tenant.id, contact.id, method, 'inbound');
+    // Validate method - currently only realtime is supported
+    if (method === 'legacy') {
+        console.error('[Phone] Legacy method not supported for inbound calls');
+        return res.type('text/xml').send(`
+            <Response>
+                <Say>Sorry, this voice agent is configured with an unsupported method. Please contact support.</Say>
+                <Hangup />
+            </Response>
+        `);
+    }
+
+    // Create session with phone numbers to prevent race condition
+    const session = callSessionManager.create(
+        tenant.id, 
+        contact.id, 
+        method, 
+        'inbound',
+        From,  // fromNumber
+        To     // toNumber
+    );
     callSessionManager.linkCallSid(session.id, CallSid);
-    
-    // Store numbers in session
-    session.fromNumber = From;
-    session.toNumber = To;
 
     // Generate WebSocket URL
     const host = process.env.HOST || 'localhost:8000';
-    let wsPath;
-    switch (method) {
-        case 'legacy':
-            wsPath = `/phone-ws/legacy/${session.id}`;
-            break;
-        case 'convrelay':
-            wsPath = `/phone-ws/convrelay/${session.id}`;
-            break;
-        case 'realtime':
-        default:
-            wsPath = `/phone-ws/realtime/${session.id}`;
-            break;
-    }
+    const wsPath = `/phone-ws/realtime/${session.id}`;  // Always realtime now
 
     const wsUrl = `wss://${host}${wsPath}`;
 
-    // Generate TwiML
-    let twiml;
-    if (method === 'convrelay') {
-        twiml = `
-            <Response>
-                <Connect>
-                    <ConversationRelay url="${wsUrl}" welcomeGreeting="Hello! How can I help you today?" />
-                </Connect>
-            </Response>
-        `;
-    } else {
-        twiml = `
-            <Response>
-                <Connect>
-                    <Stream url="${wsUrl}" />
-                </Connect>
-            </Response>
-        `;
-    }
+    // Generate TwiML - Standard Stream
+    const twiml = `
+        <Response>
+            <Connect>
+                <Stream url="${wsUrl}" />
+            </Connect>
+        </Response>
+    `;
 
     console.log(`[Phone] Inbound call routed to AI: ${CallSid} (method: ${method})`);
     res.type('text/xml').send(twiml);
@@ -392,11 +375,22 @@ async function endCall(req, res) {
 
 /**
  * Get Twilio config for tenant
+ * Credentials come from environment variables
+ * Phone number comes from tenant_phone_config
  */
 async function getTwilioConfig(tenantId) {
-    // Query tenant_phone_config table
+    // Twilio credentials from environment variables
+    const accountSid = process.env.TWILIO_ACCOUNT_SID;
+    const authToken = process.env.TWILIO_AUTH_TOKEN;
+    
+    if (!accountSid || !authToken) {
+        console.error('[Phone] Missing TWILIO_ACCOUNT_SID or TWILIO_AUTH_TOKEN in environment');
+        return null;
+    }
+
+    // Query tenant_phone_config for phone number and voice settings
     const result = await pool.query(
-        `SELECT twilio_account_sid, twilio_auth_token, phone_number, voice_model
+        `SELECT phone_number, default_method 
          FROM tenant_phone_config 
          WHERE tenant_id = $1 AND is_active = true 
          LIMIT 1`,
@@ -405,20 +399,20 @@ async function getTwilioConfig(tenantId) {
 
     if (result.rows.length > 0) {
         return {
-            accountSid: result.rows[0].twilio_account_sid,
-            authToken: result.rows[0].twilio_auth_token,
+            accountSid,
+            authToken,
             phoneNumber: result.rows[0].phone_number,
-            voiceModel: result.rows[0].voice_model
+            method: result.rows[0].default_method || 'realtime'
         };
     }
 
     // Fallback to environment variables
-    if (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.PHONE_NUMBER_FROM) {
+    if (process.env.PHONE_NUMBER_FROM) {
         return {
-            accountSid: process.env.TWILIO_ACCOUNT_SID,
-            authToken: process.env.TWILIO_AUTH_TOKEN,
+            accountSid,
+            authToken,
             phoneNumber: process.env.PHONE_NUMBER_FROM,
-            voiceModel: null
+            method: 'realtime'
         };
     }
 
@@ -430,7 +424,7 @@ async function getTwilioConfig(tenantId) {
  */
 async function getTenantByPhone(phoneNumber) {
     const result = await pool.query(
-        `SELECT t.*, tpc.phone_number as configured_phone, tpc.voice_model
+        `SELECT t.*, tpc.phone_number as configured_phone, tpc.default_method
          FROM tenants t
          JOIN tenant_phone_config tpc ON tpc.tenant_id = t.id
          WHERE tpc.phone_number = $1 AND tpc.is_active = true

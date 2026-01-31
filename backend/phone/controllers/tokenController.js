@@ -27,23 +27,10 @@ async function getAccessToken(req, res) {
     const userId = req.user.id;
 
     try {
-        // Get tenant's Twilio config
-        const configResult = await pool.query(
-            `SELECT tpc.*, t.name as tenant_name
-             FROM tenant_phone_config tpc
-             JOIN tenants t ON t.id = tpc.tenant_id
-             WHERE tpc.tenant_id = $1 AND tpc.is_active = true
-             LIMIT 1`,
-            [tenantId]
-        );
-
-        // Get configuration (from database or environment)
-        const config = configResult.rows[0] || {};
-        
-        // Account SID is required
-        const accountSid = config.twilio_account_sid || process.env.TWILIO_ACCOUNT_SID;
+        // Account SID from environment variable (required)
+        const accountSid = process.env.TWILIO_ACCOUNT_SID;
         if (!accountSid) {
-            return res.status(400).json({ error: 'TWILIO_ACCOUNT_SID not configured' });
+            return res.status(400).json({ error: 'TWILIO_ACCOUNT_SID not configured in environment' });
         }
 
         // API Key and Secret are REQUIRED for Voice SDK tokens
@@ -58,15 +45,27 @@ async function getAccessToken(req, res) {
             });
         }
 
-        // TwiML App SID is required
-        const twimlAppSid = config.twiml_app_sid || process.env.TWILIO_TWIML_APP_SID;
+        // TwiML App SID from environment variable
+        const twimlAppSid = process.env.TWILIO_TWIML_APP_SID;
         if (!twimlAppSid) {
             return res.status(400).json({ 
                 error: 'TwiML App SID not configured. Create a TwiML App in Twilio Console and add TWILIO_TWIML_APP_SID to your .env file.' 
             });
         }
 
-        const phoneNumber = config.phone_number || process.env.PHONE_NUMBER_FROM;
+        // Get tenant's phone number from tenant_phone_config (optional)
+        let phoneNumber = null;
+        const configResult = await pool.query(
+            `SELECT phone_number FROM tenant_phone_config WHERE tenant_id = $1 AND is_active = true LIMIT 1`,
+            [tenantId]
+        );
+        
+        if (configResult.rows.length > 0) {
+            phoneNumber = configResult.rows[0].phone_number;
+        } else {
+            // Fallback to environment variable
+            phoneNumber = process.env.PHONE_NUMBER_FROM;
+        }
 
         // Create unique identity for this browser client
         // IMPORTANT: Must match the identity used in TwiML <Client> element
