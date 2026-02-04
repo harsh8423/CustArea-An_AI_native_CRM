@@ -20,6 +20,10 @@ app.use(
 
 // Module imports
 const { authRoutes, newAuthRoutes } = require('./auth'); // Auth module
+
+// AI Processing routes (for Lambda integration) - TOP PRIORITY to avoid auth middleware
+const aiProcessingController = require('./controllers/aiProcessingController');
+app.post('/api/ai/queue/:messageId', aiProcessingController.queueMessageForAI);
 const { routes: emailRoutes, gmailOAuthRoutes, outlookOAuthRoutes } = require('./email'); // Email module
 const bulkEmailRoutes = require('./email/routes/bulkEmailRoutes'); // Bulk email routes
 const emailHistoryRoutes = require('./email/routes/emailHistoryRoutes'); // Email history routes
@@ -39,6 +43,20 @@ const ticketTagRoutes = require('./routes/ticketTagRoutes');
 const macroRoutes = require('./routes/macroRoutes');
 const featureRoutes = require('./routes/featureRoutes');
 const { routes: voiceAgentRoutes } = require('./voice-agents'); // Voice agent module
+const campaignRoutes = require('./campaign/routes/campaignRoutes'); // Campaign routes
+
+// RBAC routes
+const userManagementRoutes = require('./routes/userManagement');
+const roleRoutes = require('./routes/roles');
+const permissionRoutes = require('./routes/permissions');
+
+// New feature access and AI deployment routes
+const userFeatureAccessRoutes = require('./routes/userFeatureAccessRoutes');
+const aiDeploymentRoutes = require('./routes/aiDeploymentRoutes');
+const aiDeploymentDelegationRoutes = require('./routes/aiDeploymentDelegationRoutes');
+
+// Analytics and Activity Logs routes
+const analyticsRoutes = require('./routes/analyticsRoutes');
 
 // MongoDB connection for AI Agent
 const { connectMongoDB } = require('./config/mongodb');
@@ -69,10 +87,30 @@ app.use('/api/macros', macroRoutes);
 app.use('/api/features', featureRoutes);
 app.use('/api/phone', bulkPhoneCallRoutes); // Bulk phone call endpoints
 app.use('/api', voiceAgentRoutes); // Voice agents, phone numbers, models
+app.use('/api/campaigns', campaignRoutes); // Campaign management
 
-// AI Processing routes (for Lambda integration)
-const aiProcessingController = require('./controllers/aiProcessingController');
-app.post('/api/ai/queue/:messageId', aiProcessingController.queueMessageForAI);
+// RBAC routes
+app.use('/api/users', userManagementRoutes); // User management
+app.use('/api/roles', roleRoutes); // Role management
+app.use('/api/permissions', permissionRoutes); // Permissions
+
+// User feature access routes
+app.use('/api', userFeatureAccessRoutes); // Feature access overrides
+
+// AI Processing routes (moved to top)
+
+// AI deployment routes
+app.use('/api/ai', aiDeploymentRoutes); // AI deployment management
+app.use('/api', aiDeploymentDelegationRoutes); // AI deployment delegation
+
+// Communication routes (forwards, shares, reassignments)
+const communicationRoutes = require('./routes/communicationRoutes');
+app.use('/api/communications', communicationRoutes);
+
+// Analytics and Activity Logs routes
+app.use('/api/analytics', analyticsRoutes);
+
+// AI Processing routes (moved up)
 
 // Chat Widget routes (public API for embeddable widget)
 const { routes: widgetRoutes } = require('./chat_widget');
@@ -180,7 +218,13 @@ const server = app.listen(port, async () => {
     
     // Start bulk phone call worker
     const bulkPhoneCallWorker = require('./phone/workers/bulkCallWorker');
-    console.log(' Bulk phone call worker started');
+    console.log('✓ Bulk phone call worker started');
+
+    // Start campaign workers
+    const { startCampaignWorker } = require('./campaign/workers/campaignWorker');
+    const { startFollowUpWorker } = require('./campaign/workers/campaignFollowUpWorker');
+    startCampaignWorker();
+    startFollowUpWorker();
 
     console.log('✓ All workers started');
   } catch (err) {

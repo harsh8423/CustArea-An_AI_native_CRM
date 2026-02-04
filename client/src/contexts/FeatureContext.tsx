@@ -19,8 +19,23 @@ export function FeatureProvider({ children }: { children: ReactNode }) {
     const fetchFeatures = async () => {
         try {
             setLoading(true);
-            const data = await api.features.getTenantFeatures();
+            const token = localStorage.getItem('token');
+
+            // Call /api/users/me/features to get per-user features (with overrides)
+            const response = await fetch('http://localhost:8000/api/users/me/features', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+
+            if (!response.ok) {
+                console.error(`[FeatureContext] Fetch failed: ${response.status} ${response.statusText}`);
+                const text = await response.text();
+                console.error(`[FeatureContext] Response body:`, text);
+                throw new Error(`Failed to fetch features: ${response.status} ${response.statusText}`);
+            }
+
+            const data = await response.json();
             setFeatures(data.features || []);
+            console.log('[FeatureContext] User features:', data.features);
         } catch (err) {
             console.error('Failed to fetch features:', err);
             // Set default core features if API fails

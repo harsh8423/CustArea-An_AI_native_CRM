@@ -3,22 +3,58 @@ const { pool } = require('../config/db');
 exports.getContacts = async (req, res) => {
     try {
         const tenantId = req.user.tenantId;
+        const userId = req.user.id;
         const { page = 1, limit = 50, search, sort = 'created_at', order = 'desc' } = req.query;
         const offset = (page - 1) * limit;
 
-        const params = [tenantId];
-        let query = `SELECT * FROM contacts WHERE tenant_id = $1`;
-        let countQuery = `SELECT COUNT(*) FROM contacts WHERE tenant_id = $1`;
+        // Check if user is super admin
+        const roleCheck = await pool.query(`
+            SELECT r.role_name
+            FROM user_roles ur
+            JOIN roles r ON r.id = ur.role_id
+            WHERE ur.user_id = $1 AND (r.role_name = 'super_admin' OR r.role_name = 'super admin')
+        `, [userId]);
+        
+        const isSuperAdmin = roleCheck.rows.length > 0;
 
-        if (search) {
-            params.push(`%${search}%`);
-            query += ` AND (name ILIKE $2 OR email ILIKE $2 OR company_name ILIKE $2)`;
-            countQuery += ` AND (name ILIKE $2 OR email ILIKE $2 OR company_name ILIKE $2)`;
+        let params = [tenantId];
+        let paramIndex = 2;
+        
+        // Base query with RBAC filter
+        let query = `
+            SELECT DISTINCT c.*
+            FROM contacts c
+            LEFT JOIN user_contact_assignments uca ON uca.contact_id = c.id
+            WHERE c.tenant_id = $1
+        `;
+        
+        let countQuery = `
+            SELECT COUNT(DISTINCT c.id)
+            FROM contacts c
+            LEFT JOIN user_contact_assignments uca ON uca.contact_id = c.id
+            WHERE c.tenant_id = $1
+        `;
+
+        // Add RBAC filter (unless super admin)
+        if (!isSuperAdmin) {
+            // Only show contacts that are assigned to this user
+            query += ` AND uca.user_id = $${paramIndex}`;
+            countQuery += ` AND uca.user_id = $${paramIndex}`;
+            params.push(userId);
+            paramIndex++;
         }
 
-        query += ` ORDER BY ${sort} ${order === 'asc' ? 'ASC' : 'DESC'} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+        // Add search filter
+        if (search) {
+            query += ` AND (c.name ILIKE $${paramIndex} OR c.email ILIKE $${paramIndex} OR c.company_name ILIKE $${paramIndex})`;
+            countQuery += ` AND (c.name ILIKE $${paramIndex} OR c.email ILIKE $${paramIndex} OR c.company_name ILIKE $${paramIndex})`;
+            params.push(`%${search}%`);
+            paramIndex++;
+        }
+
+        query += ` ORDER BY c.${sort} ${order === 'asc' ? 'ASC' : 'DESC'} LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
         
-        const countResult = await pool.query(countQuery, params.slice(0, search ? 2 : 1));
+        const countResult = await pool.query(countQuery, params);
         const total = parseInt(countResult.rows[0].count);
 
         const result = await pool.query(query, [...params, limit, offset]);

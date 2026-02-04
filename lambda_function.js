@@ -386,24 +386,105 @@ exports.handler = async (event) => {
 
     // 3. Find or create conversation
     let conversationId = null;
-    
-    // Try to find existing open conversation
-    const existingConv = await client.query(
-      `SELECT id FROM conversations 
-       WHERE tenant_id = $1 AND channel = 'email' AND channel_contact_id = $2 AND status != 'closed'
-       ORDER BY created_at DESC LIMIT 1`,
-      [tenantId, actualSenderEmail]
-    );
 
-    if (existingConv.rows.length > 0) {
-      conversationId = existingConv.rows[0].id;
-      console.log("Found existing conversation:", conversationId);
-      
-      await client.query(
-        `UPDATE conversations SET last_message_at = now(), updated_at = now() WHERE id = $1`,
-        [conversationId]
-      );
-    } else {
+    // STRATEGY 1: Enhanced Smart Threading (Check In-Reply-To)
+    // If this email is a reply to a specific message, route it to that conversation
+    if (threadingHeaders.inReplyTo) {
+        // Strip angle brackets if present for loose matching
+        const cleanId = threadingHeaders.inReplyTo.replace(/^\<|\>$/g, '');
+        
+        console.log(`Checking threading for In-Reply-To: ${cleanId}`);
+
+        // Enhanced: Check both provider_message_id AND message_id_header from metadata
+        const threadCheck = await client.query(
+            `SELECT DISTINCT m.conversation_id 
+             FROM messages m
+             LEFT JOIN message_email_metadata mem ON m.id = mem.message_id
+             WHERE m.provider_message_id IN ($1, $2)
+                OR mem.message_id_header IN ($1, $2)
+             LIMIT 1`,
+            [cleanId, `<${cleanId}>`]
+        );
+
+        if (threadCheck.rows.length > 0) {
+            conversationId = threadCheck.rows[0].conversation_id;
+            console.log(`🎯 Smart Routing: Matched conversation ${conversationId} via Threading Header`);
+            
+            // Re-open conversation if it was closed
+            await client.query(
+                `UPDATE conversations SET status = 'open', updated_at = now() WHERE id = $1 AND status = 'closed'`,
+                [conversationId]
+            );
+        }
+    }
+    // STRATEGY 1.5: Enhanced Campaign Reply Detection
+    // Multi-layered approach for campaign emails:
+    // 1. Check for campaign Message-ID pattern in References/In-Reply-To
+    // 2. Fuzzy subject match for campaign conversations
+    // 3. Recent campaign conversation fallback
+    if (!conversationId && contactId) {
+        // First: Check if References or In-Reply-To contains campaign Message-ID pattern
+        if (threadingHeaders.references || threadingHeaders.inReplyTo) {
+            const referencesStr = `${threadingHeaders.references || ''} ${threadingHeaders.inReplyTo || ''}`;
+            // Campaign Message-ID pattern: campaign-{uuid}-contact-{uuid}
+            const campaignMatch = referencesStr.match(/campaign-([a-f0-9\-]+)-contact-([a-f0-9\-]+)/);
+            
+            if (campaignMatch) {
+                console.log(`✉️ Detected campaign Message-ID pattern in References`);
+                // Find conversation by campaign pattern
+                const campaignThreadCheck = await client.query(
+                    `SELECT DISTINCT m.conversation_id
+                     FROM messages m
+                     JOIN message_email_metadata mem ON m.id = mem.message_id
+                     WHERE mem.message_id_header LIKE '%campaign-%'
+                     AND m.conversation_id IN (
+                         SELECT id FROM conversations 
+                         WHERE contact_id = $1 AND is_campaign = true
+                     )
+                     ORDER BY m.created_at DESC
+                     LIMIT 1`,
+                    [contactId]
+                );
+                
+                if (campaignThreadCheck.rows.length > 0) {
+                    conversationId = campaignThreadCheck.rows[0].conversation_id;
+                    console.log(`🎯 Campaign Pattern Match: Found conversation ${conversationId}`);
+                }
+            }
+        }
+        
+        // Second: Fuzzy subject match (only if not already found)
+        if (!conversationId && subject.match(/^(Re:|Fwd:)/i)) {
+            console.log(`Checking Fuzzy Subject Match for: "${subject}"`);
+            const cleanSubject = subject.replace(/^(Re|Fwd):\s*/i, '').trim();
+            
+            const fuzzyCheck = await client.query(
+                `SELECT c.id, c.subject 
+                 FROM conversations c
+                 WHERE c.contact_id = $1 
+                 AND c.status != 'closed'
+                 AND c.is_campaign = true
+                 AND (c.subject ILIKE $2 OR $3 ILIKE '%' || c.subject || '%')
+                 ORDER BY c.created_at DESC
+                 LIMIT 1`,
+                [contactId, cleanSubject, cleanSubject]
+            );
+            
+            if (fuzzyCheck.rows.length > 0) {
+                conversationId = fuzzyCheck.rows[0].id;
+                console.log(`🎯 Fuzzy Routing: Matched conversation ${conversationId} via Subject`);
+            }
+        }
+    }
+    
+    /* 
+       OLD LOGIC REMOVED:
+       The fallback to "Latest Open Conversation" was causing fresh emails from campaign contacts 
+       to merge into the campaign thread. We want fresh emails to start NEW (Standard AI) threads.
+    */
+    
+    // STRATEGY 3: Create New Conversation (If no match found via Threading)
+    if (!conversationId) {
       // Create new conversation
       const newConv = await client.query(
         `INSERT INTO conversations (
@@ -413,7 +494,66 @@ exports.handler = async (event) => {
         [tenantId, contactId, actualSenderEmail, subject]
       );
       conversationId = newConv.rows[0].id;
-      console.log("Created new conversation:", conversationId);
+      console.log("Created new conversation (Fresh Thread):", conversationId);
+    }
+
+    // --- CAMPAIGN REPLY HANDLING ---
+    // Check if this conversation is part of an active campaign sequence
+    if (conversationId) {
+        const campaignCheck = await client.query(
+            `SELECT cc.id, cc.campaign_id, oc.reply_handling
+             FROM campaign_contacts cc
+             JOIN outreach_campaigns oc ON cc.campaign_id = oc.id
+             WHERE cc.conversation_id = $1 
+             AND cc.status NOT IN ('replied', 'completed')`,
+            [conversationId]
+        );
+
+        if (campaignCheck.rows.length > 0) {
+            const campaignContact = campaignCheck.rows[0];
+            console.log(`Campaign reply detected for campaign ${campaignContact.campaign_id}. Stopping follow-ups.`);
+
+            // Update campaign contact - STOP follow-ups
+            // (Analytics update handled by DB trigger on campaign_contacts)
+            await client.query(
+                `UPDATE campaign_contacts 
+                 SET status = 'replied', 
+                     next_send_at = NULL, 
+                     replied_at = now(),
+                     updated_at = now()
+                 WHERE id = $1`,
+                [campaignContact.id]
+            );
+
+            // Mark conversation as having reply (triggers UI indicators)
+            await client.query(
+                `UPDATE conversations SET has_reply = true WHERE id = $1`,
+                [conversationId]
+            );
+
+            // Manual Analytics Update (Belt & Suspenders)
+            // Ensure analytics are updated even if the DB trigger fails
+            try {
+                await client.query(`
+                    UPDATE campaign_analytics
+                    SET
+                        total_replies = (
+                            SELECT COUNT(*) FROM campaign_contacts WHERE campaign_id = $1 AND status = 'replied'
+                        ),
+                        reply_rate = CASE 
+                            WHEN (SELECT COUNT(*) FROM campaign_contacts WHERE campaign_id = $1 AND status != 'skipped_no_email') > 0
+                            THEN ((SELECT COUNT(*) FROM campaign_contacts WHERE campaign_id = $1 AND status = 'replied')::DECIMAL 
+                                / (SELECT COUNT(*) FROM campaign_contacts WHERE campaign_id = $1 AND status != 'skipped_no_email') * 100)
+                            ELSE 0
+                        END,
+                        last_updated_at = now()
+                    WHERE campaign_id = $1
+                `, [campaignContact.campaign_id]);
+                console.log(`Campaign analytics forcefully updated for campaign ${campaignContact.campaign_id}`);
+            } catch (analyticsError) {
+                console.error("Error updating campaign analytics:", analyticsError);
+            }
+        }
     }
 
     // 4. Insert message

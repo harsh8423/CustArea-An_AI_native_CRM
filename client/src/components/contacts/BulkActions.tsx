@@ -1,4 +1,4 @@
-import { Trash2, Download, X, UserPlus, Users } from "lucide-react";
+import { Trash2, Download, X, UserPlus, Users, UserCheck } from "lucide-react";
 
 interface BulkActionsProps {
     selectedCount: number;
@@ -7,9 +7,10 @@ interface BulkActionsProps {
     onExport: () => void;
     onAddToLeads?: () => void;
     onAddToGroup?: () => void;
+    onAssignToUser?: () => void;
 }
 
-export function BulkActions({ selectedCount, onClearSelection, onDelete, onExport, onAddToLeads, onAddToGroup }: BulkActionsProps) {
+export function BulkActions({ selectedCount, onClearSelection, onDelete, onExport, onAddToLeads, onAddToGroup, onAssignToUser }: BulkActionsProps) {
     if (selectedCount === 0) return null;
 
     return (
@@ -39,6 +40,16 @@ export function BulkActions({ selectedCount, onClearSelection, onDelete, onExpor
                     >
                         <Users className="h-4 w-4" />
                         Add to Group
+                    </button>
+                )}
+                {onAssignToUser && (
+                    <button
+                        onClick={onAssignToUser}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 rounded-full transition text-sm font-medium"
+                        title="Assign to User"
+                    >
+                        <UserCheck className="h-4 w-4" />
+                        Assign
                     </button>
                 )}
                 <button

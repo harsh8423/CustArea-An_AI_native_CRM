@@ -6,6 +6,7 @@
 const express = require('express');
 const router = express.Router();
 const authMiddleware = require('../../middleware/authMiddleware');
+const { requirePermission } = require('../../middleware/permissionMiddleware');
 const {
     initiateCall,
     handleInbound,
@@ -20,7 +21,7 @@ const {
 const { getAccessToken } = require('../controllers/tokenController');
 
 // ============================================
-// Public endpoints (Twilio webhooks)
+// Public endpoints (Twilio webhooks - NO AUTH)
 // ============================================
 
 // Root route - for when mounted at /twiml (e.g., Twilio hits /twiml)
@@ -43,17 +44,17 @@ router.post('/missed', handleMissedCall);
 router.post('/browser-outbound', handleBrowserOutbound);
 
 // ============================================
-// Protected endpoints (require auth)
+// Protected endpoints (require auth + permissions)
 // ============================================
 
-// Access token for browser SDK
-router.get('/token', authMiddleware, getAccessToken);
+// Access token for browser SDK (requires phone.access)
+router.get('/token', authMiddleware, requirePermission('phone.access'), getAccessToken);
 
 // Call management
-router.post('/call', authMiddleware, initiateCall);
-router.get('/calls', authMiddleware, getCallHistory);
-router.get('/calls/active', authMiddleware, getActiveCalls);
-router.get('/calls/:callSid', authMiddleware, getCallDetails);
-router.post('/calls/:callSid/end', authMiddleware, endCall);
+router.post('/call', authMiddleware, requirePermission('phone.make_calls'), initiateCall);
+router.get('/calls', authMiddleware, requirePermission('phone.access'), getCallHistory);
+router.get('/calls/active', authMiddleware, requirePermission('phone.access'), getActiveCalls);
+router.get('/calls/:callSid', authMiddleware, requirePermission('phone.access'), getCallDetails);
+router.post('/calls/:callSid/end', authMiddleware, requirePermission('phone.make_calls'), endCall);
 
 module.exports = router;

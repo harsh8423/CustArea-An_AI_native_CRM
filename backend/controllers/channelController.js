@@ -156,6 +156,26 @@ exports.deactivateWidget = async (req, res) => {
     }
 };
 
+// ===== EMAIL CONFIG =====
+
+// GET /api/channels/email - Get all email addresses for tenant
+exports.getEmailAddresses = async (req, res) => {
+    const tenantId = req.user.tenantId;
+
+    try {
+        const result = await pool.query(
+            `SELECT id, email_address as email, is_active, created_at
+             FROM allowed_inbound_emails WHERE tenant_id = $1 ORDER BY created_at DESC`,
+            [tenantId]
+        );
+
+        res.json(result.rows);
+    } catch (err) {
+        console.error("Error getting email addresses:", err);
+        res.status(500).json({ error: "Failed to get email addresses" });
+    }
+};
+
 // ===== PHONE CONFIG =====
 
 // GET /api/channels/phone - Get Phone config
@@ -163,8 +183,9 @@ exports.getPhoneConfig = async (req, res) => {
     const tenantId = req.user.tenantId;
 
     try {
+        // Only select columns that definitely exist
         const result = await pool.query(
-            `SELECT id, tenant_id, phone_number, voice_model, transcription_enabled, recording_enabled, is_active, created_at 
+            `SELECT id, tenant_id, phone_number, is_active, created_at
              FROM tenant_phone_config WHERE tenant_id = $1`,
             [tenantId]
         );
@@ -192,19 +213,18 @@ exports.upsertPhoneConfig = async (req, res) => {
         const result = await pool.query(
             `INSERT INTO tenant_phone_config (
                 tenant_id, twilio_account_sid, twilio_auth_token, phone_number,
-                voice_model, transcription_enabled, recording_enabled
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+                transcription_enabled, recording_enabled
+            ) VALUES ($1, $2, $3, $4, $5, $6)
             ON CONFLICT (tenant_id) DO UPDATE SET
                 twilio_account_sid = EXCLUDED.twilio_account_sid,
                 twilio_auth_token = EXCLUDED.twilio_auth_token,
                 phone_number = EXCLUDED.phone_number,
-                voice_model = EXCLUDED.voice_model,
                 transcription_enabled = EXCLUDED.transcription_enabled,
                 recording_enabled = EXCLUDED.recording_enabled,
                 updated_at = now()
-            RETURNING id, tenant_id, phone_number, voice_model, transcription_enabled, recording_enabled, is_active`,
+            RETURNING id, tenant_id, phone_number, transcription_enabled, recording_enabled, is_active`,
             [tenantId, twilioAccountSid, twilioAuthToken, phoneNumber, 
-             voiceModel || 'en-US-Neural2-F', transcriptionEnabled !== false, recordingEnabled === true]
+             transcriptionEnabled !== false, recordingEnabled === true]
         );
 
         res.json({ 
@@ -230,5 +250,95 @@ exports.deactivatePhone = async (req, res) => {
     } catch (err) {
         console.error("Error deactivating Phone:", err);
         res.status(500).json({ error: "Failed to deactivate Phone" });
+    }
+};
+
+// ===== RBAC CHANNEL ACCESS ENDPOINTS =====
+
+/**
+ * GET /api/channels/inbound-emails - List all available inbound email addresses for tenant
+ */
+exports.getInboundEmails = async (req, res) => {
+    try {
+        const tenantId = req.user.tenantId;
+
+        const result = await pool.query(`
+            SELECT DISTINCT
+                id,
+                email_address,
+                provider,
+                is_active
+            FROM inbound_emails
+            WHERE tenant_id = $1 AND is_active = true
+            ORDER BY email_address
+        `, [tenantId]);
+
+        res.json({ inbound_emails: result.rows });
+    } catch (err) {
+        console.error('Get inbound emails error:', err);
+        res.status(500).json({ error: 'Failed to fetch inbound emails', details: err.message });
+    }
+};
+
+/**
+ * GET /api/channels/outbound-emails - List all available outbound email configurations
+ */
+exports.getOutboundEmails = async (req, res) => {
+    try {
+        const tenantId = req.user.tenantId;
+
+        // Get SES emails
+        const sesResult = await pool.query(`
+            SELECT 
+                id,
+                'ses' as email_type,
+                from_email as email_address,
+                from_name,
+                is_active
+            FROM ses_email_configs
+            WHERE tenant_id = $1 AND is_active = true
+        `, [tenantId]);
+
+        // Get OAuth emails (Gmail/Outlook)
+        const oauthResult = await pool.query(`
+            SELECT DISTINCT
+                connection_id as id,
+                provider as email_type,
+                email as email_address,
+                display_name as from_name,
+                true as is_active
+            FROM oauth_email_connections
+            WHERE tenant_id = $1 AND is_active = true
+        `, [tenantId]);
+
+        const emails = [...sesResult.rows, ...oauthResult.rows];
+
+        res.json({ outbound_emails: emails });
+    } catch (err) {
+        console.error('Get outbound emails error:', err);
+        res.status(500).json({ error: 'Failed to fetch outbound emails', details: err.message });
+    }
+};
+
+/**
+ * GET /api/channels/phones - List all available phone numbers for tenant
+ */
+exports.getPhones = async (req, res) => {
+    try {
+        const tenantId = req.user.tenantId;
+
+        const result = await pool.query(`
+            SELECT 
+                id,
+                phone_number,
+                is_active
+            FROM tenant_phone_config
+            WHERE tenant_id = $1 AND is_active = true
+        `, [tenantId]);
+
+        res.json({ phones: result.rows });
+    } catch (err) {
+        console.error('Get phones error:', err);
+        res.status(500).json({ error: 'Failed to fetch phone numbers', details: err.message });
     }
 };

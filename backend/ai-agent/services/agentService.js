@@ -14,7 +14,7 @@ const {
     EscalationGuidance
 } = require('../models');
 
-const { FUNCTION_TOOLS, executeTool, getContactInfo, getConversationHistory } = require('./functionTools');
+const { FUNCTION_TOOLS, executeTool, getContactInfo, getConversationHistoryByContact } = require('./functionTools');
 const { getKnowledgeContext } = require('./vectorSearchService');
 
 // Initialize LLM clients
@@ -119,7 +119,7 @@ async function buildConversationContext(tenantId, conversationId, contactId) {
 
         // Get recent conversation history
         if (contactId) {
-            context.recentConversations = await getConversationHistory(tenantId, contactId, 5);
+            context.recentConversations = await getConversationHistoryByContact(tenantId, contactId, 5);
         }
     } catch (error) {
         console.error('Error building context:', error);

@@ -392,6 +392,68 @@ exports.receiveInboundMessage = async (req, res) => {
 
         const message = msgResult.rows[0];
 
+        // === CAMPAIGN REPLY HANDLING ===
+        // Check if this conversation is linked to a campaign
+        if (conversation.is_campaign && conversation.campaign_id) {
+            // Get campaign details
+            const campaignResult = await client.query(
+                `SELECT id, reply_handling FROM outreach_campaigns WHERE id = $1`,
+                [conversation.campaign_id]
+            );
+
+            if (campaignResult.rows.length > 0) {
+                const campaign = campaignResult.rows[0];
+
+                // Mark conversation as having a reply
+                await client.query(
+                    `UPDATE conversations SET has_reply = true WHERE id = $1`,
+                    [conversation.id]
+                );
+
+                // Update campaign contact status to 'replied'
+                await client.query(
+                    `UPDATE campaign_contacts 
+                     SET status = 'replied', replied_at = now(), updated_at = now()
+                     WHERE campaign_id = $1 AND contact_id = $2`,
+                    [campaign.id, conversation.contact_id]
+                );
+
+                console.log(`Campaign reply detected for campaign ${campaign.id}, reply_handling: ${campaign.reply_handling}`);
+
+                // Route based on reply handling preference
+                if (campaign.reply_handling === 'ai') {
+                    // Queue for campaign AI agent
+                    try {
+                        await queueIncomingMessage(
+                            message.id, 
+                            tenantId, 
+                            conversation.id, 
+                            channel, 
+                            false, // Not workflow
+                            null,  // No trigger data
+                            'campaign', // agentType
+                            campaign.id // campaignId
+                        );
+                        console.log(`Queued campaign reply for AI handling (campaign ${campaign.id})`);
+                    } catch (redisErr) {
+                        console.error('Failed to queue campaign reply for AI:', redisErr);
+                    }
+                    
+                    await client.query('COMMIT');
+                    
+                    return res.status(201).json({
+                        message,
+                        conversation,
+                        contact,
+                        isNewConversation,
+                        campaignHandling: 'ai'
+                    });
+                } 
+                // If 'human', conversation will show in inbox (has_reply = true)
+                // Continue with normal flow below
+            }
+        }
+
         // Insert channel-specific metadata
         if (channel === 'email' && Object.keys(channelMetadata).length > 0) {
             await client.query(

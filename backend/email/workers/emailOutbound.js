@@ -65,9 +65,12 @@ async function handleEmailJob(entryId, payload) {
         return;
     }
 
-    // 2. Fetch conversation to get recipient
+    // 2. Fetch conversation to get recipient AND campaign info
     const convResult = await pool.query(
-        `SELECT * FROM conversations WHERE id = $1`,
+        `SELECT c.*, cc.sender_email_address as campaign_contact_sender
+         FROM conversations c
+         LEFT JOIN campaign_contacts cc ON cc.conversation_id = c.id
+         WHERE c.id = $1`,
         [message.conversation_id]
     );
     
@@ -78,16 +81,53 @@ async function handleEmailJob(entryId, payload) {
     const conversation = convResult.rows[0];
     const to = conversation.channel_contact_id; // This should be the email address
 
-    // 3. Prepare email input
-    // We might need to fetch metadata if there are specific headers or from address overrides
-    // For now, we use the defaults handled by sesSendService or simple logic
-    
+    // *** CAMPAIGN EMAIL HANDLING ***
+    // Force FROM address to be the original campaign sender for proper threading
+    let forcedFromEmail = null;
+    if (conversation.is_campaign) {
+        // Priority: campaign_sender_email from conversation, fallback to campaign_contacts
+        forcedFromEmail = conversation.campaign_sender_email || conversation.campaign_contact_sender;
+        if (forcedFromEmail) {
+            console.log(`📧 Campaign Reply: Forcing FROM to original sender: ${forcedFromEmail}`);
+        } else {
+            console.warn(`⚠️ Campaign conversation ${message.conversation_id} missing sender email info`);
+        }
+    }
+
+    // 2.5 Fetch threading headers for proper reply threading
+    // For AI/human replies, we need to reference the LAST MESSAGE in the thread
+    // Check both inbound and outbound to get the most recent message
+    const lastMessageRes = await pool.query(
+        `SELECT m.provider_message_id, mem.message_id_header, m.direction
+         FROM messages m
+         LEFT JOIN message_email_metadata mem ON m.id = mem.message_id
+         WHERE m.conversation_id = $1 
+         AND (m.provider_message_id IS NOT NULL OR mem.message_id_header IS NOT NULL)
+         ORDER BY m.created_at DESC 
+         LIMIT 1`,
+        [message.conversation_id]
+    );
+
+    let inReplyTo = null;
+    let references = null;
+    if (lastMessageRes.rows.length > 0) {
+        const lastMsg = lastMessageRes.rows[0];
+        // Prefer message_id_header from metadata (more reliable), fallback to provider_message_id
+        inReplyTo = lastMsg.message_id_header || lastMsg.provider_message_id;
+        references = inReplyTo; // For now, simple reference to last message
+        console.log(`Threading: In-Reply-To = ${inReplyTo}`);
+    }
+
+    // 3. Prepare email input with campaign-aware FROM address
     const emailInput = {
         tenantId: tenant_id,
+        fromEmail: forcedFromEmail, // Force campaign sender if applicable
         to: to,
-        subject: conversation.subject || 'New Message', // Fallback subject
+        subject: conversation.subject || 'Re: Conversation', // Fallback subject
         html: message.content_html,
-        text: message.content_text
+        text: message.content_text,
+        inReplyTo: inReplyTo,
+        references: references
     };
 
     // 4. Send via SES Service

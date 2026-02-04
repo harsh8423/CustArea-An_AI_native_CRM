@@ -1,17 +1,33 @@
 "use client";
 
 import { useState } from "react";
-import { Mail, Shield, Bell, User, MessageCircle, Puzzle } from "lucide-react";
+import { Mail, Shield, Bell, User, MessageCircle, Puzzle, Users, ShieldCheck, Bot, Settings as SettingsIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { EmailSettings } from "@/components/settings/EmailSettings";
 import { ChannelSettings } from "@/components/settings/ChannelSettings";
+import { UserManagement } from "@/components/settings/UserManagement";
+import { RoleManagement } from "@/components/settings/RoleManagement";
+import AIDeploymentsManager from "@/components/settings/AIDeploymentsManager";
+import { AIDeploymentDelegation } from "@/components/settings/AIDeploymentDelegation";
 import IntegrationsPage from "./integrations/page";
+import { usePermissions } from "@/hooks/usePermissions";
 
-type SettingsTab = "emails" | "channels" | "integrations" | "security" | "notifications" | "profile";
+type SettingsTab = "emails" | "channels" | "users" | "roles" | "ai-deployments" | "ai-delegation" | "integrations" | "security" | "notifications" | "profile";
 
-const TABS = [
+interface SettingTab {
+    id: SettingsTab;
+    label: string;
+    icon: any;
+    requiresPermission?: string;  // If set, only show this tab if user has this permission
+}
+
+const TABS: SettingTab[] = [
     { id: "emails" as const, label: "Emails", icon: Mail },
     { id: "channels" as const, label: "Channels", icon: MessageCircle },
+    { id: "users" as const, label: "User Management", icon: Users, requiresPermission: "users.manage" },
+    { id: "roles" as const, label: "Role Management", icon: ShieldCheck, requiresPermission: "roles.manage" },
+    { id: "ai-deployments" as const, label: "AI Deployments", icon: Bot },
+    { id: "ai-delegation" as const, label: "AI Delegation", icon: SettingsIcon },
     { id: "integrations" as const, label: "Integrations", icon: Puzzle },
     { id: "security" as const, label: "Security", icon: Shield },
     { id: "notifications" as const, label: "Notifications", icon: Bell },
@@ -20,6 +36,16 @@ const TABS = [
 
 export default function SettingsPage() {
     const [activeTab, setActiveTab] = useState<SettingsTab>("emails");
+    const { hasPermission, hasAnyPermission } = usePermissions();
+
+    // Filter tabs based on permissions
+    const visibleTabs = TABS.filter(tab => {
+        // If no permission required, show the tab
+        if (!tab.requiresPermission) return true;
+
+        // Check if user has the required permission
+        return hasAnyPermission([tab.requiresPermission, 'settings.manage_all']);
+    });
 
     return (
         <div className="h-full flex flex-col bg-[#eff0eb] p-4">
@@ -33,9 +59,9 @@ export default function SettingsPage() {
                     </div>
 
                     {/* Mini Tab Navigation */}
-                    <div className="flex-1 px-3 pb-3">
+                    <div className="flex-1 px-3 pb-3 overflow-y-auto">
                         <div className="space-y-1">
-                            {TABS.map((tab) => (
+                            {visibleTabs.map((tab) => (
                                 <button
                                     key={tab.id}
                                     onClick={() => setActiveTab(tab.id)}
@@ -69,6 +95,10 @@ export default function SettingsPage() {
                     <div className="flex-1 overflow-y-auto">
                         {activeTab === "emails" && <EmailSettings />}
                         {activeTab === "channels" && <ChannelSettings />}
+                        {activeTab === "users" && <UserManagement />}
+                        {activeTab === "roles" && <RoleManagement />}
+                        {activeTab === "ai-deployments" && <AIDeploymentsManager />}
+                        {activeTab === "ai-delegation" && <AIDeploymentDelegation />}
                         {activeTab === "integrations" && <IntegrationsPage />}
                         {activeTab === "security" && (
                             <div className="h-full flex flex-col items-center justify-center text-gray-400">

@@ -4,7 +4,9 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Users, Plus, LayoutGrid, Search, Trash2, Edit2, ChevronDown, ChevronUp, Mail, Phone, Building, User, X } from "lucide-react";
 import { api } from "@/lib/api";
+import { rbacApi } from "@/lib/rbacApi";
 import CreateGroupModal from "@/components/contacts/CreateGroupModal";
+import { BulkAssignDialog } from "@/components/shared/BulkAssignDialog";
 import { cn } from "@/lib/utils";
 
 interface Group {
@@ -35,6 +37,22 @@ export default function ContactGroupsPage() {
     const [expandedGroupId, setExpandedGroupId] = useState<string | null>(null);
     const [groupContacts, setGroupContacts] = useState<Record<string, Contact[]>>({});
     const [loadingContacts, setLoadingContacts] = useState<string | null>(null);
+    const [selectedGroupIds, setSelectedGroupIds] = useState<Set<string>>(new Set());
+    const [isBulkAssignOpen, setIsBulkAssignOpen] = useState(false);
+    const [availableUsers, setAvailableUsers] = useState<Array<{ id: string; name: string; email: string }>>([]);
+
+    // Fetch available users for assignment
+    useEffect(() => {
+        const fetchUsers = async () => {
+            try {
+                const response = await rbacApi.users.list();
+                setAvailableUsers(response.users || []);
+            } catch (err) {
+                console.error('Failed to fetch users:', err);
+            }
+        };
+        fetchUsers();
+    }, []);
 
     const fetchGroups = useCallback(async () => {
         setLoading(true);
@@ -127,6 +145,24 @@ export default function ContactGroupsPage() {
         }
     };
 
+    const handleToggleSelect = (id: string) => {
+        const newSelected = new Set(selectedGroupIds);
+        if (newSelected.has(id)) {
+            newSelected.delete(id);
+        } else {
+            newSelected.add(id);
+        }
+        setSelectedGroupIds(newSelected);
+    };
+
+    const handleToggleSelectAll = () => {
+        if (selectedGroupIds.size === groups.length && groups.length > 0) {
+            setSelectedGroupIds(new Set());
+        } else {
+            setSelectedGroupIds(new Set(groups.map(g => g.id)));
+        }
+    };
+
     return (
         <div className="h-full flex flex-col bg-[#eff0eb]">
             <div className="flex-1 bg-white rounded-tl-3xl rounded-br-2xl mt-4 mr-4 mb-4 overflow-hidden flex flex-col shadow-[0px_1px_4px_0px_rgba(20,20,20,0.15)] relative">
@@ -167,27 +203,60 @@ export default function ContactGroupsPage() {
                 </div>
 
                 {/* Search and Actions Bar */}
-                <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-                    <div className="flex items-center gap-3 flex-1">
-                        <div className="relative flex-1 max-w-md">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                            <input
-                                type="text"
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                                placeholder="Search groups..."
-                                className="w-full pl-10 pr-4 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500"
-                            />
+                {/* Search and Actions Bar */}
+                {selectedGroupIds.size > 0 ? (
+                    <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-blue-50">
+                        <div className="flex items-center gap-4">
+                            <span className="font-semibold text-blue-900">
+                                {selectedGroupIds.size} selected
+                            </span>
+                            <button
+                                onClick={() => setSelectedGroupIds(new Set())}
+                                className="text-sm text-blue-600 hover:text-blue-800"
+                            >
+                                Clear selection
+                            </button>
+                        </div>
+                        <div className="flex items-center gap-3">
+                            <button
+                                onClick={() => setIsBulkAssignOpen(true)}
+                                className="px-4 py-2 text-sm font-semibold text-white bg-blue-600 rounded-xl hover:bg-blue-700 transition-all shadow-sm"
+                            >
+                                Assign to User
+                            </button>
                         </div>
                     </div>
-                    <button
-                        onClick={() => setIsCreateModalOpen(true)}
-                        className="px-4 py-2 text-sm font-semibold text-white bg-blue-600 rounded-xl hover:bg-blue-700 transition-all flex items-center gap-2 shadow-[0_4px_14px_0_rgba(37,99,235,0.2)]"
-                    >
-                        <Plus className="h-4 w-4" />
-                        Create Group
-                    </button>
-                </div>
+                ) : (
+                    <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+                        <div className="flex items-center gap-3 flex-1">
+                            <div className="flex items-center h-full">
+                                <input
+                                    type="checkbox"
+                                    checked={groups.length > 0 && selectedGroupIds.size === groups.length}
+                                    onChange={handleToggleSelectAll}
+                                    className="h-5 w-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500 mr-4 cursor-pointer"
+                                />
+                            </div>
+                            <div className="relative flex-1 max-w-md">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                                <input
+                                    type="text"
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    placeholder="Search groups..."
+                                    className="w-full pl-10 pr-4 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500"
+                                />
+                            </div>
+                        </div>
+                        <button
+                            onClick={() => setIsCreateModalOpen(true)}
+                            className="px-4 py-2 text-sm font-semibold text-white bg-blue-600 rounded-xl hover:bg-blue-700 transition-all flex items-center gap-2 shadow-[0_4px_14px_0_rgba(37,99,235,0.2)]"
+                        >
+                            <Plus className="h-4 w-4" />
+                            Create Group
+                        </button>
+                    </div>
+                )}
 
                 {/* Groups List */}
                 <div className="flex-1 overflow-y-auto p-6">
@@ -237,6 +306,20 @@ export default function ContactGroupsPage() {
                                         >
                                             <div className="flex items-center justify-between">
                                                 <div className="flex items-center gap-4 flex-1">
+                                                    <div
+                                                        className="flex items-center justify-center p-2 cursor-pointer"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            handleToggleSelect(group.id);
+                                                        }}
+                                                    >
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={selectedGroupIds.has(group.id)}
+                                                            onChange={() => { }} // Handled by div click
+                                                            className="h-5 w-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500 cursor-pointer"
+                                                        />
+                                                    </div>
                                                     <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-blue-50 to-blue-100 flex items-center justify-center shrink-0">
                                                         <Users className="h-6 w-6 text-blue-600" />
                                                     </div>
@@ -375,6 +458,19 @@ export default function ContactGroupsPage() {
                         setSelectedGroup(null);
                     }}
                 />
+
+                {isBulkAssignOpen && (
+                    <BulkAssignDialog
+                        type="contactGroups"
+                        selectedIds={Array.from(selectedGroupIds)}
+                        availableUsers={availableUsers}
+                        onClose={() => setIsBulkAssignOpen(false)}
+                        onSuccess={() => {
+                            setSelectedGroupIds(new Set());
+                            // Maybe refresh if needed
+                        }}
+                    />
+                )}
             </div>
         </div>
     );

@@ -2,7 +2,7 @@ const twilio = require('twilio');
 const { pool } = require('../../config/db');
 const { queueIncomingMessage } = require('../../config/redis');
 const { findContact } = require('../../services/contactResolver');
-const { shouldAgentRespond } = require('../../controllers/agentDeploymentController');
+const { shouldAgentRespond } = require('../../services/aiAgentDecisionService');
 
 
 /**
@@ -195,13 +195,19 @@ async function handleIncomingWebhook(webhookData) {
             await queueIncomingMessage(message.id, tenantId, conversation.id, 'whatsapp', true, triggerData);
             console.log(`[WhatsApp] Queued message ${message.id} for WORKFLOW processing with trigger data`);
         } else {
-            // Check if AI is enabled
-            const aiEnabled = await shouldAgentRespond(tenantId, 'whatsapp');
-            if (aiEnabled) {
+            // Check if AI is enabled for this specific WhatsApp account
+            const aiDecision = await shouldAgentRespond(
+                tenantId, 
+                'whatsapp', 
+                account.id,  // whatsapp_account_id
+                'whatsapp_account_id'
+            );
+            
+            if (aiDecision.shouldRespond) {
                 await queueIncomingMessage(message.id, tenantId, conversation.id, 'whatsapp', false);
-                console.log(`[WhatsApp] Queued message ${message.id} for AI processing`);
+                console.log(`[WhatsApp] Queued message ${message.id} for AI processing (${aiDecision.reason})`);
             } else {
-                console.log(`[WhatsApp] No workflow or AI enabled for tenant ${tenantId}, skipping queue`);
+                console.log(`[WhatsApp] AI not enabled for tenant ${tenantId}: ${aiDecision.reason}`);
             }
         }
     } catch (err) {

@@ -2,26 +2,29 @@ const { pool } = require('../config/db');
 
 /**
  * GET /api/features
- * Get all available features
+ * Get all features with tenant-specific enabled status
  */
 exports.getAllFeatures = async (req, res) => {
+    const tenantId = req.user.tenantId;
+    
     try {
         const result = await pool.query(`
             SELECT 
-                feature_key,
-                display_name,
-                description,
-                icon,
-                category,
-                is_default,
-                sort_order
-            FROM features
-            ORDER BY sort_order
-        `);
+                f.id,
+                f.feature_key,
+                f.display_name as feature_name,
+                f.description,
+                f.icon,
+                f.category,
+                COALESCE(tf.is_enabled, f.is_default) as is_enabled,
+                f.is_default,
+                f.sort_order
+            FROM features f
+            LEFT JOIN tenant_features tf ON f.id = tf.feature_id AND tf.tenant_id = $1
+            ORDER BY f.sort_order
+        `, [tenantId]);
 
-        res.json({ 
-            features: result.rows 
-        });
+        res.json(result.rows);
     } catch (err) {
         console.error('Get features error:', err);
         res.status(500).json({ 
@@ -41,33 +44,40 @@ exports.getTenantFeatures = async (req, res) => {
     try {
         const result = await pool.query(`
             SELECT 
+                f.id,
                 f.feature_key,
                 f.display_name,
                 f.description,
                 f.icon,
                 f.category,
-                tf.is_enabled,
+                f.is_default,
+                COALESCE(tf.is_enabled, f.is_default) as is_enabled,
                 tf.enabled_at,
                 tf.disabled_at
             FROM features f
-            LEFT JOIN tenant_features tf ON f.id = tf.feature_id AND tf.tenant_id = $1::uuid
+            LEFT JOIN tenant_features tf ON f.id = tf.feature_id AND tf.tenant_id = $1
             ORDER BY f.sort_order
         `, [tenantId]);
 
-        // Return list of enabled feature keys for easy checking
+        // Extract enabled feature_key strings for sidebar filtering
         const enabledFeatures = result.rows
             .filter(f => f.is_enabled)
             .map(f => f.feature_key);
 
+        console.log(`[Features] Tenant ${tenantId} enabled features:`, enabledFeatures);
+
         res.json({ 
-            features: enabledFeatures,
-            details: result.rows
+            success: true,
+            features: enabledFeatures,  // Array of feature_key strings for sidebar: ['dashboard', 'sales', ...]
+            details: result.rows        // Full feature objects for Integrations page
         });
     } catch (err) {
-        console.error('Get tenant features error:', err);
+        console.error("Error getting tenant features:", err);
         res.status(500).json({ 
-            error: 'Failed to fetch tenant features',
-            details: err.message 
+            success: false,
+            error: "Failed to get tenant features",
+            features: ['dashboard', 'sales', 'conversation', 'ai_agent'],
+            details: []
         });
     }
 };

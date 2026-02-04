@@ -8,7 +8,7 @@ const { pool } = require('../../config/db');
 const callSessionManager = require('../services/callSessionManager');
 const { getCallsForTenant, getCallBySid, persistMissedCall } = require('../services/phoneStorageService');
 const { findOrCreateContact } = require('../../services/contactResolver');
-const { shouldAgentRespond } = require('../../controllers/agentDeploymentController');
+const { shouldAgentRespond } = require('../../services/aiAgentDecisionService');
 
 /**
  * Initiate an outbound call
@@ -133,11 +133,23 @@ async function handleInbound(req, res) {
             { source: 'phone' }
         );
 
-        // Check if AI should handle this call
-        const aiShouldHandle = await shouldAgentRespond(tenant.id, 'phone');
-        console.log(`[Phone] AI should handle: ${aiShouldHandle} for tenant ${tenant.id}`);
+        // Get phone config ID for AI deployment check
+        const phoneConfigResult = await pool.query(
+            `SELECT id FROM tenant_phone_config WHERE tenant_id = $1 AND phone_number = $2`,
+            [tenant.id, To]
+        );
+        const phoneConfigId = phoneConfigResult.rows[0]?.id;
 
-        if (aiShouldHandle) {
+        // Check if AI should handle this call for this specific phone number
+        const aiDecision = await shouldAgentRespond(
+tenant.id, 
+            'phone', 
+            phoneConfigId,
+            'phone_config_id'
+        );
+        console.log(`[Phone] AI decision: ${aiDecision.shouldRespond} - ${aiDecision.reason}`);
+
+        if (aiDecision.shouldRespond) {
             // Route to AI Agent
             return await routeToAI(req, res, tenant, contact, From, To, CallSid);
         } else {
@@ -289,17 +301,60 @@ async function getActiveCalls(req, res) {
  */
 async function getCallHistory(req, res) {
     const tenantId = req.user.tenantId;
+    const userId = req.user.id;
     const { limit = 50, offset = 0, status, direction } = req.query;
 
     try {
-        const calls = await getCallsForTenant(tenantId, {
-            limit: parseInt(limit),
-            offset: parseInt(offset),
-            status,
-            direction
-        });
+        // Check if user is super admin
+        const roleCheck = await pool.query(`
+            SELECT r.role_name
+            FROM user_roles ur
+            JOIN roles r ON r.id = ur.role_id
+            WHERE ur.user_id = $1 AND (r.role_name = 'super_admin' OR r.role_name = 'super admin')
+        `, [userId]);
+        const isSuperAdmin = roleCheck.rows.length > 0;
 
-        res.json({ calls, count: calls.length });
+        // Build query with RBAC filtering
+        let query = `
+            SELECT pc.*, c.name as contact_name, c.email as contact_email, c.phone as contact_phone
+            FROM phone_calls pc
+            LEFT JOIN contacts c ON c.id = pc.contact_id
+            WHERE pc.tenant_id = $1
+        `;
+        
+        const params = [tenantId];
+        let paramCount = 1;
+
+        // RBAC Filter: Non-super admin users only see calls from phone numbers they have access to
+        if (!isSuperAdmin) {
+            paramCount++;
+            query += ` AND EXISTS (
+                SELECT 1 FROM tenant_phone_config tpc
+                WHERE tpc.phone_number = pc.from_number 
+                AND tpc.tenant_id = $1
+                AND tpc.assigned_user_id = $${paramCount}
+            )`;
+            params.push(userId);
+        }
+
+        if (status) {
+            paramCount++;
+            query += ` AND pc.status = $${paramCount}`;
+            params.push(status);
+        }
+
+        if (direction) {
+            paramCount++;
+            query += ` AND pc.direction = $${paramCount}`;
+            params.push(direction);
+        }
+
+        query += ` ORDER BY pc.created_at DESC LIMIT $${paramCount + 1} OFFSET $${paramCount + 2}`;
+        params.push(parseInt(limit), parseInt(offset));
+
+        const result = await pool.query(query, params);
+
+        res.json({ calls: result.rows, count: result.rows.length });
     } catch (error) {
         console.error('[Phone] Error getting call history:', error);
         res.status(500).json({ error: 'Failed to get call history' });

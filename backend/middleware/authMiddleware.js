@@ -41,6 +41,10 @@ const authenticateToken = async (req, res, next) => {
             return res.status(403).json({ error: 'Account is not active' });
         }
 
+        // Load user permissions
+        const { getUserPermissions } = require('../services/permissionService');
+        const permissions = await getUserPermissions(user.id);
+
         req.user = {
             id: user.id,
             email: user.email,
@@ -48,7 +52,9 @@ const authenticateToken = async (req, res, next) => {
             role: user.role,
             tenantId: user.tenant_id,
             tenant_id: user.tenant_id,
-            tenant_name: user.tenant_name
+            tenant_name: user.tenant_name,
+            permissions: permissions,  // Array of permission keys
+            hasPermission: (permKey) => permissions.includes(permKey)
         };
 
         return next();

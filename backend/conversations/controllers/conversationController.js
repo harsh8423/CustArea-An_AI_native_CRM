@@ -6,6 +6,7 @@ const { pool } = require('../../config/db');
 // GET /api/conversations - List conversations
 exports.listConversations = async (req, res) => {
     const tenantId = req.user.tenantId;
+    const userId = req.user.id;
     const { 
         status, 
         channel, 
@@ -13,23 +14,69 @@ exports.listConversations = async (req, res) => {
         limit = 50, 
         offset = 0,
         search,
-        contactId 
+        contactId,
+        campaignRepliesOnly 
     } = req.query;
 
     try {
+        // Check if user is super admin
+        const roleCheck = await pool.query(`
+            SELECT r.role_name
+            FROM user_roles ur
+            JOIN roles r ON r.id = ur.role_id
+            WHERE ur.user_id = $1 AND (r.role_name = 'super_admin' OR r.role_name = 'super admin')
+        `, [userId]);
+        
+        const isSuperAdmin = roleCheck.rows.length > 0;
+
         let query = `
             SELECT 
                 c.*,
                 co.name as contact_name,
                 co.email as contact_email,
-                u.name as assigned_to_name
+                u.name as assigned_to_name,
+                oc.name as campaign_name,
+                oc.reply_handling as campaign_reply_handling
             FROM conversations c
             LEFT JOIN contacts co ON c.contact_id = co.id
             LEFT JOIN users u ON c.assigned_to = u.id
+            LEFT JOIN outreach_campaigns oc ON c.campaign_id = oc.id
             WHERE c.tenant_id = $1
         `;
         const params = [tenantId];
         let paramIndex = 2;
+
+        // RBAC Filter: Non-super admin users can only see:
+        // 1. Conversations assigned to them
+        // 2. Conversations using their allowed email addresses (for email channel)
+        if (!isSuperAdmin) {
+            query += ` AND (
+                c.assigned_to = $${paramIndex}
+                OR (
+                    c.channel = 'email' 
+                    AND EXISTS (
+                        SELECT 1 FROM user_outbound_email_access uoea
+                        LEFT JOIN tenant_email_connections tec ON tec.id = uoea.email_connection_id
+                        LEFT JOIN tenant_allowed_from_emails tafe ON tafe.id = uoea.allowed_from_email_id
+                        WHERE uoea.user_id = $${paramIndex}
+                        AND (
+                            tec.email_address = c.channel_contact_id 
+                            OR tafe.email_address = c.channel_contact_id
+                        )
+                    )
+                )
+            )`;
+            params.push(userId);
+            paramIndex++;
+        }
+
+        // DEFAULT FILTER: Exclude campaign conversations that don't have a reply yet
+        // User wants to see only engaged prospects in the main list
+        // Allow overriding this with explicit includeAllCampaigns flag if needed in future, check definition
+        // For now, hard requirement: "display only the campaign conversation that have the contact/prospect reply"
+        if (!campaignRepliesOnly) {
+           query += ` AND (c.is_campaign = false OR c.has_reply = true)`;
+        }
 
         if (status) {
             query += ` AND c.status = $${paramIndex++}`;
@@ -61,20 +108,50 @@ exports.listConversations = async (req, res) => {
             params.push(contactId);
         }
 
+        if (campaignRepliesOnly === 'true') {
+            query += ` AND c.is_campaign = true AND c.has_reply = true`;
+        }
+
         query += ` ORDER BY c.last_message_at DESC NULLS LAST, c.created_at DESC`;
         query += ` LIMIT $${paramIndex++} OFFSET $${paramIndex++}`;
         params.push(parseInt(limit), parseInt(offset));
 
         const result = await pool.query(query, params);
 
-        // Get total count
+        // Get total count with same RBAC filter
         let countQuery = `
             SELECT COUNT(*) FROM conversations c
             LEFT JOIN contacts co ON c.contact_id = co.id
             WHERE c.tenant_id = $1
         `;
         const countParams = [tenantId];
-        let countParamIndex = 2;
+        let countParamIndex =2;
+
+        if (!isSuperAdmin) {
+            countQuery += ` AND (
+                c.assigned_to = $${countParamIndex}
+                OR (
+                    c.channel = 'email' 
+                    AND EXISTS (
+                        SELECT 1 FROM user_outbound_email_access uoea
+                        LEFT JOIN tenant_email_connections tec ON tec.id = uoea.email_connection_id
+                        LEFT JOIN tenant_allowed_from_emails tafe ON tafe.id = uoea.allowed_from_email_id
+                        WHERE uoea.user_id = $${countParamIndex}
+                        AND (
+                            tec.email_address = c.channel_contact_id 
+                            OR tafe.email_address = c.channel_contact_id
+                        )
+                    )
+                )
+            )`;
+            countParams.push(userId);
+            countParamIndex++;
+        }
+
+        // DEFAULT FILTER: Exclude campaign conversations that don't have a reply yet (Consistent with main query)
+        if (!campaignRepliesOnly) {
+           countQuery += ` AND (c.is_campaign = false OR c.has_reply = true)`;
+        }
 
         if (status) {
             countQuery += ` AND c.status = $${countParamIndex++}`;
@@ -91,6 +168,10 @@ exports.listConversations = async (req, res) => {
         if (contactId) {
             countQuery += ` AND c.contact_id = $${countParamIndex++}`;
             countParams.push(contactId);
+        }
+
+        if (campaignRepliesOnly === 'true') {
+            countQuery += ` AND c.is_campaign = true AND c.has_reply = true`;
         }
 
         const countResult = await pool.query(countQuery, countParams);

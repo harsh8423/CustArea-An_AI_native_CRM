@@ -1,5 +1,5 @@
 import React from "react";
-import { X, Filter as FilterIcon, Mail, MessageCircle, MessageSquare } from "lucide-react";
+import { X, Filter as FilterIcon, Mail, MessageCircle, MessageSquare, Target } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface FilterModalProps {
@@ -9,8 +9,9 @@ interface FilterModalProps {
         channel: 'all' | 'email' | 'whatsapp' | 'widget';
         mailbox: string | null;
         status: string | null;
+        campaignReplies: boolean;
     };
-    onApplyFilters: (filters: { channel: 'all' | 'email' | 'whatsapp' | 'widget'; mailbox: string | null; status: string | null }) => void;
+    onApplyFilters: (filters: { channel: 'all' | 'email' | 'whatsapp' | 'widget'; mailbox: string | null; status: string | null; campaignReplies: boolean }) => void;
     mailboxes: Array<{ id: string; email: string; description?: string }>;
 }
 
@@ -38,7 +39,7 @@ export function FilterModal({ isOpen, onClose, filters, onApplyFilters, mailboxe
     ];
 
     const handleClear = () => {
-        setLocalFilters({ channel: 'all', mailbox: null, status: null });
+        setLocalFilters({ channel: 'all', mailbox: null, status: null, campaignReplies: false });
     };
 
     const handleApply = () => {
@@ -49,7 +50,8 @@ export function FilterModal({ isOpen, onClose, filters, onApplyFilters, mailboxe
     const activeFilterCount =
         (localFilters.channel !== 'all' ? 1 : 0) +
         (localFilters.mailbox ? 1 : 0) +
-        (localFilters.status ? 1 : 0);
+        (localFilters.status ? 1 : 0) +
+        (localFilters.campaignReplies ? 1 : 0);
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -170,6 +172,30 @@ export function FilterModal({ isOpen, onClose, filters, onApplyFilters, mailboxe
                                     </button>
                                 );
                             })}
+                        </div>
+                    </div>
+
+                    {/* Campaign Replies Filter */}
+                    <div>
+                        <label className="text-sm font-semibold text-gray-900 mb-3 block">
+                            Campaign Filters
+                        </label>
+                        <div className="space-y-2">
+                            <label className="flex items-center gap-3 px-4 py-3 bg-gray-50 hover:bg-gray-100 rounded-xl cursor-pointer transition-all duration-200">
+                                <input
+                                    type="checkbox"
+                                    checked={localFilters.campaignReplies}
+                                    onChange={(e) => setLocalFilters({ ...localFilters, campaignReplies: e.target.checked })}
+                                    className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-2 focus:ring-blue-100 cursor-pointer"
+                                />
+                                <div className="flex items-center gap-2 flex-1">
+                                    <Target className="h-4 w-4 text-blue-600" />
+                                    <span className="text-sm font-medium text-gray-700">Show Campaign Replies Only</span>
+                                </div>
+                            </label>
+                            <p className="text-xs text-gray-400 px-4">
+                                Show only conversations from campaigns where the prospect has replied
+                            </p>
                         </div>
                     </div>
                 </div>

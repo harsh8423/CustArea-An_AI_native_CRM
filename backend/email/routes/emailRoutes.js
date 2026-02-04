@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const authenticateToken = require('../../middleware/authMiddleware');
+const { requirePermission } = require('../../middleware/permissionMiddleware');
 const {
     // Multi-provider operations
     sendEmailMultiProvider,
@@ -27,34 +28,33 @@ router.use(authenticateToken);
 
 // ===== MULTI-PROVIDER ENDPOINTS =====
 // These work with any email provider (Gmail, SES, Outlook, etc.)
-router.post('/send-multi', sendEmailMultiProvider); // New unified send endpoint
-router.get('/inbound-multi', getInboundEmailsMulti); // Fetch emails from all providers
-router.get('/connections', getEmailConnections); // List all email connections
-router.post('/connections/:id/set-default', setDefaultConnection); // Set default connection
+router.post('/send-multi', requirePermission('email.send'), sendEmailMultiProvider);
+router.get('/inbound-multi', requirePermission('email.access'), getInboundEmailsMulti);
+router.get('/connections', requirePermission('settings.view'), getEmailConnections);
+router.post('/connections/:id/set-default', requirePermission('settings.edit'), setDefaultConnection);
 
+// ===== SES IDENTITY MANAGEMENT (Admin only) =====
+router.get('/identities', requirePermission('settings.view'), getIdentities);
+router.post('/identities/domain', requirePermission('settings.edit'), createDomainIdentity);
+router.get('/identities/:id/status', requirePermission('settings.view'), checkIdentityStatus);
 
-// SES Identities
-router.get('/identities', getIdentities);
-router.post('/identities/domain', createDomainIdentity);
-router.get('/identities/:id/status', checkIdentityStatus);
+// ===== ALLOWED FROM EMAILS - Outbound Senders (Admin only) =====
+router.get('/allowed-from', requirePermission('settings.view'), getAllowedFrom);
+router.post('/allowed-from', requirePermission('settings.edit'), addAllowedFrom);
+router.delete('/allowed-from/:id', requirePermission('settings.edit'), removeAllowedFrom);
 
-// Allowed From Emails (outbound senders)
-router.get('/allowed-from', getAllowedFrom);
-router.post('/allowed-from', addAllowedFrom);
-router.delete('/allowed-from/:id', removeAllowedFrom);
+// ===== SEND EMAIL =====
+router.post('/send', requirePermission('email.send'), sendEmail);
 
-// Send Email
-router.post('/send', sendEmail);
+// ===== OUTBOUND EMAILS - History (View permission) =====
+router.get('/outbound', requirePermission('email.access'), getOutboundEmails);
 
-// Outbound Emails (history)
-router.get('/outbound', getOutboundEmails);
+// ===== INBOUND EMAILS - Fetch (View permission) =====
+router.get('/inbound', requirePermission('email.access'), getInboundEmails);
 
-// Inbound Emails
-router.get('/inbound', getInboundEmails);
-
-// Allowed Inbound Addresses
-router.get('/allowed-inbound', getAllowedInbound);
-router.post('/allowed-inbound', addAllowedInbound);
-router.delete('/allowed-inbound/:id', removeAllowedInbound);
+// ===== ALLOWED INBOUND ADDRESSES (Admin only) =====
+router.get('/allowed-inbound', requirePermission('settings.view'), getAllowedInbound);
+router.post('/allowed-inbound', requirePermission('settings.edit'), addAllowedInbound);
+router.delete('/allowed-inbound/:id', requirePermission('settings.edit'), removeAllowedInbound);
 
 module.exports = router;

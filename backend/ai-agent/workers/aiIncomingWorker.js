@@ -101,6 +101,30 @@ async function processIncomingMessage(entryId, payload) {
 
     const conversation = convResult.rows[0];
 
+    // === CAMPAIGN AI ROUTING ===
+    // Check if this is a campaign conversation that should be handled by campaign AI
+    if (payload.agent_type === 'campaign' && payload.campaign_id) {
+        console.log(`[AI Worker] Routing to Campaign AI (campaign ${payload.campaign_id})`);
+        
+        const { processCampaignReply } = require('../../campaign/services/campaignAIService');
+        
+        try {
+            await processCampaignReply(
+                message_id,
+                tenant_id,
+                conversation_id,
+                payload.campaign_id
+            );
+            
+            console.log(`[AI Worker] Campaign AI response generated and queued`);
+            return; // Exit early - campaign AI handled it
+            
+        } catch (campaignAIError) {
+            console.error('[AI Worker] Campaign AI error, falling back to default AI:', campaignAIError);
+            // Continue with default AI processing as fallback
+        }
+    }
+
     // 3. Get conversation history (limit to recent messages to avoid token exhaustion)
     const historyResult = await pool.query(
         `SELECT id, role, content_text, channel, created_at FROM messages 

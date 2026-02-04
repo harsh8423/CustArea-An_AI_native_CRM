@@ -6,6 +6,7 @@ import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import RequestPhoneNumberModal from "@/components/voice-agents/RequestPhoneNumberModal";
 import CreateVoiceAgentModal from "@/components/voice-agents/CreateVoiceAgentModal";
+import { RBACPageIndicator } from "@/components/shared/RBACPageIndicator";
 
 interface VoiceAgent {
     id: string;
@@ -127,6 +128,14 @@ export default function VoiceAgentsPage() {
 
                     {/* Voice Agents List */}
                     <div className="flex-1 overflow-y-auto p-6">
+                        {/* RBAC Indicator */}
+                        <div className="mb-4">
+                            <RBACPageIndicator
+                                resourceName="Voice Agents"
+                                filterDescription="You're seeing voice agents assigned to you and unassigned agents available for use."
+                            />
+                        </div>
+
                         {loading ? (
                             <div className="flex items-center justify-center h-full">
                                 <div className="text-center">

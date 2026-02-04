@@ -1,117 +1,69 @@
 const { pool } = require('../../config/db');
+const { getConversationThreadingHeaders, addThreadingHeaders, storeEmailMetadata } = require('../../email/services/emailThreadingHelper');
+const { getUserOutboundEmails } = require('../../services/permissionService');
 
 /**
  * GET /api/email/sender-addresses
- * Get all available sender email addresses for the tenant
+ * Get available sender email addresses based on user's RBAC access
+ * Super admin automatically gets all tenant emails
  */
 exports.getSenderAddresses = async (req, res) => {
     const tenantId = req.user.tenantId;
+    const userId = req.user.id;
 
     try {
+        // Get user's outbound emails (super admin gets ALL automatically)
+        const userEmails = await getUserOutboundEmails(userId);
+        
+        // If user has no assigned emails, return empty
+        if (userEmails.length === 0) {
+            return res.json({ 
+                senderAddresses: [],
+                message: 'No email addresses assigned to you. Contact your administrator to grant email access.'
+            });
+        }
+
+        // Build sender addresses from user's access
         const senderAddresses = [];
-
-        // 1. Get Gmail connections
-        const gmailResult = await pool.query(`
-            SELECT id, email_address, display_name, is_default
-            FROM tenant_email_connections
-            WHERE tenant_id = $1::uuid 
-            AND provider_type = 'gmail'
-            AND is_active = true
-            ORDER BY is_default DESC, email_address
-        `, [tenantId]);
-
-        gmailResult.rows.forEach(row => {
-            senderAddresses.push({
-                email: row.email_address,
-                provider: 'gmail',
-                displayName: row.display_name || `${row.email_address} (Gmail)`,
-                connectionId: row.id,
-                isDefault: row.is_default
-            });
+        userEmails.forEach(row => {
+            if (row.email_type === 'connection' && row.email_address) {
+                // Gmail/Outlook connection
+                senderAddresses.push({
+                    email: row.email_address,
+                    provider: row.provider_type || 'email',
+                    displayName: row.display_name || `${row.email_address} (EMAIL)`,
+                    connectionId: row.connection_id,
+                    isDefault: false
+                });
+            } else if (row.email_type === 'identity' && row.email_address) {
+                // SES / Allowed from email
+                senderAddresses.push({
+                    email: row.email_address,
+                    provider: 'ses',
+                    displayName: `${row.email_address} (SES)`,
+                    identityId: row.allowed_from_email_id,
+                    sesIdentityId: row.ses_identity_id,
+                    isDefault: false
+                });
+            }
         });
 
-        // 2. Get Outlook connections
-        const outlookResult = await pool.query(`
-            SELECT id, email_address, display_name, is_default
-           FROM tenant_email_connections
-            WHERE tenant_id = $1::uuid 
-            AND provider_type = 'outlook'
-            AND is_active = true
-            ORDER BY is_default DESC, email_address
-        `, [tenantId]);
-
-        outlookResult.rows.forEach(row => {
-            senderAddresses.push({
-                email: row.email_address,
-                provider: 'outlook',
-                displayName: row.display_name || `${row.email_address} (Outlook)`,
-                connectionId: row.id,
-                isDefault: row.is_default
-            });
+        // Remove duplicates
+        const uniqueAddresses = [];
+        const seenEmails = new Set();
+        senderAddresses.forEach(addr => {
+            if (!seenEmails.has(addr.email)) {
+                seenEmails.add(addr.email);
+                uniqueAddresses.push(addr);
+            }
         });
 
-        // 3. Get SES verified identities (if table exists)
-        try {
-            const sesResult = await pool.query(`
-                SELECT id, email, domain, verification_status
-                FROM email_identities
-                WHERE tenant_id = $1::uuid
-                AND verification_status = 'verified'
-                ORDER BY created_at DESC
-            `, [tenantId]);
-
-            sesResult.rows.forEach(row => {
-                if (row.email) {
-                    senderAddresses.push({
-                        email: row.email,
-                        provider: 'ses',
-                        displayName: `${row.email} (Custom Domain)`,
-                        identityId: row.id,
-                        isDefault: false
-                    });
-                }
-            });
-        } catch (sesErr) {
-            // Table doesn't exist yet - skip SES addresses
-            console.log('SES email_identities table not found, skipping...');
+        // Set first as default if none is set
+        if (uniqueAddresses.length > 0) {
+            uniqueAddresses[0].isDefault = true;
         }
 
-        // 4. Get allowed sender emails from tenant_allowed_from_emails (new migration 003 table)
-        try {
-            const allowedEmailsResult = await pool.query(`
-                SELECT 
-                    tafe.email_address, 
-                    tafe.is_default,
-                    tsi.id as identity_id,
-                    tsi.identity_value
-                FROM tenant_allowed_from_emails tafe
-                JOIN tenant_ses_identities tsi ON tafe.ses_identity_id = tsi.id
-                WHERE tafe.tenant_id = $1::uuid
-                AND tsi.verification_status = 'SUCCESS'
-                ORDER BY tafe.is_default DESC, tafe.created_at DESC
-            `, [tenantId]);
-
-            allowedEmailsResult.rows.forEach(row => {
-                // Avoid duplicates
-                if (!senderAddresses.find(addr => addr.email === row.email_address)) {
-                    senderAddresses.push({
-                        email: row.email_address,
-                        provider: 'ses',
-                        displayName: `${row.email_address} (SES)`,
-                        identityId: row.identity_id,
-                        isDefault: row.is_default || false
-                    });
-                }
-            });
-        } catch (allowedEmailsErr) {
-            // Table doesn't exist yet - skip
-            console.log('tenant_allowed_from_emails table not found, skipping...');
-        }
-
-        // 4. Sort by is_default
-        senderAddresses.sort((a, b) => (b.isDefault ? 1 : 0) - (a.isDefault ? 1 : 0));
-
-        res.json({ senderAddresses });
+        res.json({ senderAddresses: uniqueAddresses });
     } catch (err) {
         console.error('Get sender addresses error:', err);
         res.status(500).json({ 
@@ -127,11 +79,11 @@ exports.getSenderAddresses = async (req, res) => {
  */
 exports.sendConversationEmail = async (req, res) => {
     const tenantId = req.user.tenantId;
-    const { 
+    let { 
         to, 
         subject, 
         body,
-        from,           // Sender email address
+        from,           // Sender email address (let allows reassignment for campaign emails)
         cc,
         bcc,
         conversationId,
@@ -158,6 +110,32 @@ exports.sendConversationEmail = async (req, res) => {
     try {
         const EmailProviderFactory = require('../../email/services/emailProviderFactory');
         
+        // Check if this is a campaign conversation
+        const campaignCheck = await pool.query(
+            `SELECT cc.sender_email_address, cc.campaign_id, cc.conversation_id
+             FROM campaign_contacts cc
+             WHERE cc.conversation_id = $1`,
+            [conversationId]
+        );
+        
+        let isCampaignConversation = false;
+        let campaignSenderEmail = null;
+        
+        if (campaignCheck.rows.length > 0) {
+            isCampaignConversation = true;
+            campaignSenderEmail = campaignCheck.rows[0].sender_email_address;
+            console.log(`📧 Campaign conversation detected. Original sender: ${campaignSenderEmail}`);
+            
+            // For campaign conversations, OVERRIDE the from address to maintain thread consistency
+            if (campaignSenderEmail) {
+                console.log(`📧 Forcing sender email to: ${campaignSenderEmail} for thread consistency`);
+                // Override the from address
+                from = campaignSenderEmail;
+            } else {
+                console.warn(`⚠️ Campaign conversation but no sender_email_address found. Using user selection.`);
+            }
+        }
+        
         // 1. Detect provider from sender email
         const provider = await detectProviderFromEmail(from, tenantId);
         
@@ -175,8 +153,11 @@ exports.sendConversationEmail = async (req, res) => {
             });
         }
         
+        // Get threading headers for this conversation
+        const threadingHeaders = await getConversationThreadingHeaders(conversationId);
+        
         // 3. Send email
-        const emailParams = {
+        let emailParams = {
             from,
             to,
             subject,
@@ -185,6 +166,15 @@ exports.sendConversationEmail = async (req, res) => {
             cc,
             bcc
         };
+        
+        // Add threading headers if available
+        if (threadingHeaders) {
+            emailParams = addThreadingHeaders(emailParams, {
+                inReplyTo: threadingHeaders.lastMessageId,
+                references: threadingHeaders.references
+            }, provider.type);
+            console.log(`📧 Added threading headers - In-Reply-To: ${threadingHeaders.lastMessageId}`);
+        }
         
         console.log('📤 Sending email with params:', {
             from: emailParams.from,
@@ -248,6 +238,18 @@ exports.sendConversationEmail = async (req, res) => {
                 bcc
             }
         }, tenantId);
+        
+        // Store email metadata with threading headers
+        if (threadingHeaders) {
+            await storeEmailMetadata(internalMessageId, {
+                fromAddress: from,
+                toAddresses: [{ email: to }],
+                messageIdHeader: result.providerMessageId || null,
+                inReplyTo: threadingHeaders.lastMessageId,
+                references: threadingHeaders.references,
+                subject: subject
+            });
+        }
 
         res.json({ 
             success: true, 

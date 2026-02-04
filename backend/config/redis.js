@@ -60,12 +60,23 @@ async function initRedisStreams() {
  * @param {string} channel 
  * @param {boolean} hasWorkflowTrigger - Whether tenant has active workflow for this trigger
  * @param {object} triggerData - Full trigger context (sender, message, etc.)
+ * @param {string} agentType - Type of AI agent ('default' | 'campaign')
+ * @param {string} campaignId - Campaign ID (if agentType is 'campaign')
  */
-async function queueIncomingMessage(messageId, tenantId, conversationId, channel, hasWorkflowTrigger = false, triggerData = null) {
+async function queueIncomingMessage(
+    messageId, 
+    tenantId, 
+    conversationId, 
+    channel, 
+    hasWorkflowTrigger = false, 
+    triggerData = null,
+    agentType = 'default',
+    campaignId = null
+) {
     // Route to workflow stream if tenant has active workflow trigger
     const stream = hasWorkflowTrigger ? STREAMS.WORKFLOW_TRIGGERS : STREAMS.INCOMING;
     
-    console.log(`[Redis] Routing message ${messageId} to ${stream} (hasWorkflow: ${hasWorkflowTrigger})`);
+    console.log(`[Redis] Routing message ${messageId} to ${stream} (hasWorkflow: ${hasWorkflowTrigger}, agentType: ${agentType})`);
     
     // Build base fields
     const fields = [
@@ -74,6 +85,16 @@ async function queueIncomingMessage(messageId, tenantId, conversationId, channel
         'conversation_id', conversationId,
         'channel', channel
     ];
+    
+    // Add agent type for campaign AI routing
+    if (agentType) {
+        fields.push('agent_type', agentType);
+    }
+    
+    // Add campaign ID if this is a campaign reply
+    if (campaignId) {
+        fields.push('campaign_id', campaignId);
+    }
     
     // Add trigger data for workflow processing
     if (hasWorkflowTrigger && triggerData) {

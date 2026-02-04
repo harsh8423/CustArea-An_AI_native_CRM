@@ -5,54 +5,55 @@
 const express = require('express');
 const router = express.Router();
 const authMiddleware = require('../../middleware/authMiddleware');
+const { requirePermission } = require('../../middleware/permissionMiddleware');
 const controller = require('../controllers/agentController');
 
 // Apply auth middleware to all routes
 router.use(authMiddleware);
 
-// ================== AGENT CONFIG ==================
-router.get('/', controller.getAgent);
-router.put('/', controller.updateAgent);
-router.get('/status', controller.getStatus);
+// ================== AGENT CONFIG (Admin only) ==================
+router.get('/', requirePermission('ai.configure'), controller.getAgent);
+router.put('/', requirePermission('ai.configure'), controller.updateAgent);
+router.get('/status', requirePermission('ai.configure'), controller.getStatus);
 
-// ================== KNOWLEDGE BASE ==================
-router.get('/knowledge', controller.getKnowledgeSources);
-router.post('/knowledge', controller.addKnowledgeSource);
-router.post('/knowledge/upload', controller.upload.single('file'), controller.uploadDocument);
-router.delete('/knowledge/:id', controller.deleteKnowledgeSource);
+// ================== KNOWLEDGE BASE (Admin only) ==================
+router.get('/knowledge', requirePermission('ai.configure'), controller.getKnowledgeSources);
+router.post('/knowledge', requirePermission('ai.configure'), controller.addKnowledgeSource);
+router.post('/knowledge/upload', requirePermission('ai.configure'), controller.upload.single('file'), controller.uploadDocument);
+router.delete('/knowledge/:id', requirePermission('ai.configure'), controller.deleteKnowledgeSource);
 
-// ================== GUIDANCE ==================
-router.get('/guidance', controller.getGuidances);
-router.post('/guidance', controller.createGuidance);
-router.put('/guidance/:id', controller.updateGuidance);
-router.delete('/guidance/:id', controller.deleteGuidance);
+// ================== GUIDANCE (Admin only) ==================
+router.get('/guidance', requirePermission('ai.configure'), controller.getGuidances);
+router.post('/guidance', requirePermission('ai.configure'), controller.createGuidance);
+router.put('/guidance/:id', requirePermission('ai.configure'), controller.updateGuidance);
+router.delete('/guidance/:id', requirePermission('ai.configure'), controller.deleteGuidance);
 
 
-// ================== GUARDRAILS ==================
-router.get('/guardrails', controller.getGuardrails);
-router.get('/guardrails/templates', controller.getGuardrailTemplates);
-router.post('/guardrails', controller.createGuardrail);
-router.put('/guardrails/:id', controller.updateGuardrail);
-router.delete('/guardrails/:id', controller.deleteGuardrail);
+// ================== GUARDRAILS (Admin only) ==================
+router.get('/guardrails', requirePermission('ai.configure'), controller.getGuardrails);
+router.get('/guardrails/templates', requirePermission('ai.configure'), controller.getGuardrailTemplates);
+router.post('/guardrails', requirePermission('ai.configure'), controller.createGuardrail);
+router.put('/guardrails/:id', requirePermission('ai.configure'), controller.updateGuardrail);
+router.delete('/guardrails/:id', requirePermission('ai.configure'), controller.deleteGuardrail);
 
-// ================== ESCALATION ==================
-router.get('/escalation/rules', controller.getEscalationRules);
-router.post('/escalation/rules', controller.createEscalationRule);
-router.delete('/escalation/rules/:id', controller.deleteEscalationRule);
+// ================== ESCALATION (Admin only) ==================
+router.get('/escalation/rules', requirePermission('ai.configure'), controller.getEscalationRules);
+router.post('/escalation/rules', requirePermission('ai.configure'), controller.createEscalationRule);
+router.delete('/escalation/rules/:id', requirePermission('ai.configure'), controller.deleteEscalationRule);
 
-router.get('/escalation/guidance', controller.getEscalationGuidances);
-router.post('/escalation/guidance', controller.createEscalationGuidance);
-router.delete('/escalation/guidance/:id', controller.deleteEscalationGuidance);
+router.get('/escalation/guidance', requirePermission('ai.configure'), controller.getEscalationGuidances);
+router.post('/escalation/guidance', requirePermission('ai.configure'), controller.createEscalationGuidance);
+router.delete('/escalation/guidance/:id', requirePermission('ai.configure'), controller.deleteEscalationGuidance);
 
-// ================== DEPLOYMENT ==================
+// ================== DEPLOYMENT (Admin only) ==================
 const deploymentController = require('../../controllers/agentDeploymentController');
-router.get('/deployments', deploymentController.getDeployments);
-router.put('/deployments/:channel', deploymentController.updateDeployment);
+router.get('/deployments', requirePermission('ai.configure'), deploymentController.getDeployments);
+router.put('/deployments/:channel', requirePermission('ai.configure'), deploymentController.updateDeployment);
 
-// ================== CHAT ==================
+// ================== CHAT (All authenticated users) ==================
 router.post('/chat', controller.chatWithAgent);
 
-// ================== COPILOT ==================
+// ================== COPILOT (All authenticated users) ==================
 const copilotController = require('../controllers/copilotController');
 router.post('/copilot/chat', copilotController.chat);
 router.post('/copilot/chat-stream', copilotController.chatStream);

@@ -10,7 +10,10 @@ import { AddContactModal } from "@/components/contacts/AddContactModal";
 import { BulkActions } from "@/components/contacts/BulkActions";
 import { FilterModal } from "@/components/contacts/FilterModal";
 import AddToGroupModal from "@/components/contacts/AddToGroupModal";
+import { ReassignDialog } from "@/components/shared/ReassignDialog";
+import { BulkAssignDialog } from "@/components/shared/BulkAssignDialog";
 import { api } from "@/lib/api";
+import { rbacApi } from "@/lib/rbacApi";
 
 import { User, Mail, Phone, Building, Tag, Clock, MapPin, LayoutGrid, Zap } from "lucide-react";
 
@@ -36,6 +39,9 @@ export default function ContactsPage() {
     const [isAddContactOpen, setIsAddContactOpen] = useState(false);
     const [isFilterOpen, setIsFilterOpen] = useState(false);
     const [isAddToGroupOpen, setIsAddToGroupOpen] = useState(false);
+    const [isReassignOpen, setIsReassignOpen] = useState(false);
+    const [isBulkAssignOpen, setIsBulkAssignOpen] = useState(false);
+    const [availableUsers, setAvailableUsers] = useState<Array<{ id: string; name: string; email: string }>>([]);
 
     // Spreadsheet State
     const [columns, setColumns] = useState<Column[]>(DEFAULT_COLUMNS);
@@ -45,8 +51,18 @@ export default function ContactsPage() {
         setLoading(true);
         try {
             const data = await api.contacts.list({ page, search, limit: 100 });
+
+            // Ensure data and contacts array exist
+            if (!data || !data.contacts) {
+                console.error('Invalid API response:', data);
+                setContacts([]);
+                setTotalPages(1);
+                setLoading(false);
+                return;
+            }
+
             setContacts(data.contacts);
-            setTotalPages(data.totalPages);
+            setTotalPages(data.totalPages || 1);
 
             // Detect custom columns from metadata
             if (data.contacts.length > 0) {
@@ -76,6 +92,8 @@ export default function ContactsPage() {
             }
         } catch (err) {
             console.error("Failed to fetch contacts", err);
+            setContacts([]);
+            setTotalPages(1);
         } finally {
             setLoading(false);
         }
@@ -87,6 +105,19 @@ export default function ContactsPage() {
         }, 300);
         return () => clearTimeout(debounce);
     }, [fetchContacts]);
+
+    // Fetch available users for assignment
+    useEffect(() => {
+        const fetchUsers = async () => {
+            try {
+                const response = await rbacApi.users.list();
+                setAvailableUsers(response.users || []);
+            } catch (err) {
+                console.error('Failed to fetch users:', err);
+            }
+        };
+        fetchUsers();
+    }, []);
 
     // Selection Handlers
     const handleToggleSelect = (id: string) => {
@@ -150,6 +181,14 @@ export default function ContactsPage() {
         // A full implementation would update the query params
         console.log("Applying filters:", filters);
         // TODO: Implement backend filtering with these conditions
+    };
+
+    const handleAssignContacts = () => {
+        if (selectedIds.size === 0) {
+            alert('Please select at least one contact');
+            return;
+        }
+        setIsReassignOpen(true);
     };
 
     return (
@@ -226,6 +265,7 @@ export default function ContactsPage() {
                         }
                     }}
                     onAddToGroup={() => setIsAddToGroupOpen(true)}
+                    onAssignToUser={() => setIsBulkAssignOpen(true)}
                 />
 
                 <ImportWizard
@@ -245,6 +285,19 @@ export default function ContactsPage() {
                     }}
                 />
 
+                {isBulkAssignOpen && (
+                    <BulkAssignDialog
+                        type="contacts"
+                        selectedIds={Array.from(selectedIds)}
+                        availableUsers={availableUsers}
+                        onClose={() => setIsBulkAssignOpen(false)}
+                        onSuccess={() => {
+                            setSelectedIds(new Set());
+                            fetchContacts();
+                        }}
+                    />
+                )}
+
                 <FilterModal
                     isOpen={isFilterOpen}
                     onClose={() => setIsFilterOpen(false)}
@@ -261,6 +314,21 @@ export default function ContactsPage() {
                         setIsAddToGroupOpen(false);
                     }}
                 />
+
+                {isReassignOpen && selectedIds.size > 0 && (
+                    <ReassignDialog
+                        type="contact"
+                        itemId={Array.from(selectedIds)[0]}  // Use first selected for bulk assignment
+                        itemName={`${selectedIds.size} contact${selectedIds.size > 1 ? 's' : ''}`}
+                        availableUsers={availableUsers}
+                        onClose={() => setIsReassignOpen(false)}
+                        onSuccess={() => {
+                            setSelectedIds(new Set());
+                            setIsReassignOpen(false);
+                            fetchContacts();
+                        }}
+                    />
+                )}
             </div>
         </div>
     );

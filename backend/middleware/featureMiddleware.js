@@ -1,25 +1,26 @@
-const { checkTenantFeature } = require('../controllers/featureController');
+const { canAccessFeature } = require('../services/permissionService');
 
 /**
- * Middleware to check if tenant has a specific feature enabled
+ * Middleware to check if user can access a specific feature
+ * (respects both tenant-level and user-level feature access)
  * Usage: router.post('/tickets', authMiddleware, requireFeature('ticketing'), ...)
  */
 const requireFeature = (featureKey) => {
     return async (req, res, next) => {
         try {
-            const tenantId = req.user.tenantId;
+            const userId = req.user.id;
             
-            if (!tenantId) {
+            if (!userId) {
                 return res.status(401).json({ error: 'Unauthorized' });
             }
 
-            const hasFeature = await checkTenantFeature(tenantId, featureKey);
+            const hasAccess = await canAccessFeature(userId, featureKey);
 
-            if (!hasFeature) {
+            if (!hasAccess) {
                 return res.status(403).json({ 
                     error: 'Feature not enabled',
                     feature: featureKey,
-                    message: `The ${featureKey} feature is not enabled for your account. Enable it in Settings → Integrations.`
+                    message: `The ${featureKey} feature is not enabled for your account. Contact your admin to enable it.`
                 });
             }
 

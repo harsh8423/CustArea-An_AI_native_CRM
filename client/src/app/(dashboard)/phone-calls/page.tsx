@@ -10,6 +10,7 @@ import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import dynamic from 'next/dynamic';
 import { PhoneLogView } from "@/components/conversation/PhoneLogView";
+import { RBACPageIndicator } from "@/components/shared/RBACPageIndicator";
 
 // Dynamic import PhoneModal to avoid SSR issues with Twilio SDK
 const PhoneModal = dynamic(() => import('@/components/phone/PhoneModal'), { ssr: false });
@@ -276,6 +277,14 @@ export default function PhoneCallsPage() {
                                         value={searchQuery}
                                         onChange={(e) => setSearchQuery(e.target.value)}
                                         className="w-full pl-10 pr-4 py-2.5 text-sm bg-gray-50 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-100 focus:bg-white transition-all duration-200 placeholder:text-gray-300"
+                                    />
+                                </div>
+
+                                {/* RBAC Indicator */}
+                                <div className="px-2 mt-3">
+                                    <RBACPageIndicator
+                                        resourceName="Phone Calls"
+                                        filterDescription="You're viewing calls from phone numbers assigned to you."
                                     />
                                 </div>
                             </div>

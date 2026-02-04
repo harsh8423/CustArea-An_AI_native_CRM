@@ -11,8 +11,27 @@ const { pool } = require('../../config/db');
  */
 async function listVoiceAgents(req, res) {
     const tenantId = req.user.tenantId;
+    const userId = req.user.id;
 
     try {
+        // Check if user is super admin
+        const roleCheck = await pool.query(`
+            SELECT r.role_name
+            FROM user_roles ur
+            JOIN roles r ON r.id = ur.role_id
+            WHERE ur.user_id = $1 AND (r.role_name = 'super_admin' OR r.role_name = 'super admin')
+        `, [userId]);
+        const isSuperAdmin = roleCheck.rows.length > 0;
+
+        // Build query with optional RBAC filtering
+        const params = [tenantId];
+        let whereClause = 'WHERE tpc.tenant_id = $1';
+        
+        if (!isSuperAdmin) {
+            whereClause += ` AND (tpc.assigned_user_id = $2 OR tpc.assigned_user_id IS NULL)`;
+            params.push(userId);
+        }
+
         const result = await pool.query(`
             SELECT 
                 tpc.id,
@@ -42,9 +61,9 @@ async function listVoiceAgents(req, res) {
             LEFT JOIN x_tts tts ON tpc.tts_model_id = tts.id
             LEFT JOIN x_realtime_sts rt ON tpc.realtime_model_id = rt.id
             LEFT JOIN tenants_allowed_phones tap ON tpc.phone_number = tap.phone_number
-            WHERE tpc.tenant_id = $1
+            ${whereClause}
             ORDER BY tpc.created_at DESC
-        `, [tenantId]);
+        `, params);
 
         res.json({ voiceAgents: result.rows });
     } catch (error) {

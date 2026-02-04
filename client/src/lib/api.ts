@@ -5,6 +5,7 @@ interface AuthResponse {
     token?: string;
     user?: any;
     error?: string;
+    useOTP?: boolean;
 }
 
 export const api = {
@@ -19,6 +20,20 @@ export const api = {
                 body: JSON.stringify(data),
             });
             return res.json();
+        },
+        verifyMagicLink: async (data: { email: string; supabaseToken: string; companyName?: string }): Promise<AuthResponse> => {
+            const res = await fetch(`${API_BASE_URL}/v2/auth/verify-magic-link`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify(data),
+            });
+            const result = await res.json();
+            if (result.session?.accessToken) {
+                return { token: result.session.accessToken, user: result.user, message: result.message };
+            }
+            return result;
         },
         getCurrentUser: async (): Promise<any> => {
             const token = localStorage.getItem("token");

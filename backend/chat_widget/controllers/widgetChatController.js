@@ -11,7 +11,7 @@ const {
     buildConversationContext
 } = require('../../ai-agent/services/agentService');
 const { getKnowledgeContext } = require('../../ai-agent/services/vectorSearchService');
-const { shouldAgentRespond } = require('../../controllers/agentDeploymentController');
+const { shouldAgentRespond } = require('../../services/aiAgentDecisionService');
 const { linkSessionToContact } = require('../services/widgetSessionService');
 const OpenAI = require('openai');
 
@@ -74,14 +74,21 @@ async function chat(req, res) {
             [conversation.id]
         );
         
-        // Check if AI should respond
-        const aiEnabled = await shouldAgentRespond(tenantId, 'widget');
+        // Check if AI should respond for this widget config
+        const aiDecision = await shouldAgentRespond(
+            tenantId, 
+            'widget', 
+            config.id,  // widget_config_id
+            'widget_config_id'
+        );
         
-        if (!aiEnabled) {
-            console.log(`[Widget Chat] AI not enabled for widget, returning placeholder`);
+        if (!aiDecision.shouldRespond) {
+            console.log(`[Widget Chat] AI not enabled: ${aiDecision.reason}`);
+            // Return away message if available
+            const awayMsg = aiDecision.deployment?.away_message || "Thanks for your message! Our team will get back to you shortly.";
             return res.json({
                 conversationId: conversation.id,
-                reply: "Thanks for your message! Our team will get back to you shortly.",
+                reply: awayMsg,
                 aiEnabled: false
             });
         }

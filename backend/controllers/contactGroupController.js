@@ -36,41 +36,53 @@ exports.createGroup = async (req, res) => {
 exports.listGroups = async (req, res) => {
     try {
         const tenantId = req.user.tenantId;
+        const userId = req.user.id;
+        const userRole = req.user.role;
+        const isAdmin = userRole === 'admin' || userRole === 'superadmin';
+
         const { page = 1, limit = 50, search } = req.query;
         const offset = (page - 1) * limit;
 
-        let query = `
-            SELECT 
-                cg.*,
-                COUNT(cgm.id) as contact_count,
-                u.name as created_by_name
+        let queryBase = `
             FROM contact_groups cg
-            LEFT JOIN contact_group_memberships cgm ON cg.id = cgm.group_id
             LEFT JOIN users u ON cg.created_by = u.id
-            WHERE cg.tenant_id = $1
         `;
-        
+
         const params = [tenantId];
+        let whereClause = `WHERE cg.tenant_id = $1`;
+
+        // RBAC Filter
+        if (!isAdmin) {
+            queryBase += ` LEFT JOIN user_contact_group_assignments ucga ON cg.id = ucga.contact_group_id AND ucga.user_id = $2`;
+            whereClause += ` AND (cg.created_by = $2 OR ucga.user_id IS NOT NULL)`;
+            params.push(userId);
+        }
 
         if (search) {
-            query += ` AND cg.name ILIKE $${params.length + 1}`;
+            whereClause += ` AND cg.name ILIKE $${params.length + 1}`;
             params.push(`%${search}%`);
         }
 
-        query += ` GROUP BY cg.id, u.name ORDER BY cg.created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+        const countQuery = `SELECT COUNT(DISTINCT cg.id) as count ${queryBase} ${whereClause}`;
+        const countResult = await pool.query(countQuery, params);
+        const total = parseInt(countResult.rows[0].count);
+
+        const dataQuery = `
+            SELECT 
+                cg.*,
+                COUNT(DISTINCT cgm.id) as contact_count,
+                u.name as created_by_name
+            ${queryBase}
+            LEFT JOIN contact_group_memberships cgm ON cg.id = cgm.group_id
+            ${whereClause}
+            GROUP BY cg.id, u.name 
+            ORDER BY cg.created_at DESC 
+            LIMIT $${params.length + 1} OFFSET $${params.length + 2}
+        `;
+        
         params.push(limit, offset);
 
-        const result = await pool.query(query, params);
-
-        // Get total count
-        let countQuery = `SELECT COUNT(*) FROM contact_groups WHERE tenant_id = $1`;
-        const countParams = [tenantId];
-        if (search) {
-            countQuery += ` AND name ILIKE $2`;
-            countParams.push(`%${search}%`);
-        }
-        const countResult = await pool.query(countQuery, countParams);
-        const total = parseInt(countResult.rows[0].count);
+        const result = await pool.query(dataQuery, params);
 
         res.json({
             groups: result.rows,
@@ -91,19 +103,32 @@ exports.getGroup = async (req, res) => {
     try {
         const { id } = req.params;
         const tenantId = req.user.tenantId;
+        const userId = req.user.id;
+        const userRole = req.user.role;
+        const isAdmin = userRole === 'admin' || userRole === 'superadmin';
 
-        const result = await pool.query(
-            `SELECT 
+        let query = `
+            SELECT 
                 cg.*,
-                COUNT(cgm.id) as contact_count,
+                COUNT(DISTINCT cgm.id) as contact_count,
                 u.name as created_by_name
-             FROM contact_groups cg
-             LEFT JOIN contact_group_memberships cgm ON cg.id = cgm.group_id
-             LEFT JOIN users u ON cg.created_by = u.id
-             WHERE cg.id = $1 AND cg.tenant_id = $2
-             GROUP BY cg.id, u.name`,
-            [id, tenantId]
-        );
+            FROM contact_groups cg
+            LEFT JOIN contact_group_memberships cgm ON cg.id = cgm.group_id
+            LEFT JOIN users u ON cg.created_by = u.id
+        `;
+
+        let whereClause = `WHERE cg.id = $1 AND cg.tenant_id = $2`;
+        const params = [id, tenantId];
+
+        if (!isAdmin) {
+            query += ` LEFT JOIN user_contact_group_assignments ucga ON cg.id = ucga.contact_group_id AND ucga.user_id = $3`;
+            whereClause += ` AND (cg.created_by = $3 OR ucga.user_id IS NOT NULL)`;
+            params.push(userId);
+        }
+
+        query += ` ${whereClause} GROUP BY cg.id, u.name`;
+
+        const result = await pool.query(query, params);
 
         if (result.rows.length === 0) {
             return res.status(404).json({ error: 'Contact group not found' });

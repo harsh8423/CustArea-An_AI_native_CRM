@@ -6,6 +6,7 @@ import { MessageRenderer } from "@/components/conversation/MessageRenderer";
 import { EmailComposer } from "@/components/conversation/EmailComposer";
 import { FilterModal } from "@/components/conversation/FilterModal";
 import { UnknownContactIndicator } from "@/components/conversation/UnknownContactIndicator";
+import { ForwardConversationDialog } from "@/components/conversation/ForwardConversationDialog";
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useSearchParams } from "next/navigation";
@@ -13,13 +14,15 @@ import {
     Mail, MessageCircle, Phone, Search, MoreHorizontal,
     Send, Paperclip, Smile, Star, ChevronDown, ChevronUp,
     User, Tag, Edit, MessageSquare, RefreshCw, Check, Sparkles,
-    Ticket, X, Zap, Filter as FilterIcon, Trash, Reply, History
+    Ticket, X, Zap, Filter as FilterIcon, Trash, Reply, History, Forward
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import dynamic from 'next/dynamic';
 import { ReplyDrawer } from "@/components/conversation/ReplyDrawer";
 import CopilotPanel from "@/components/conversation/CopilotPanel";
+import { Badge } from "@/components/ui/badge";
+import { Target, Bot } from "lucide-react";
 
 
 
@@ -40,6 +43,12 @@ interface Conversation {
     contact_email: string | null;
     assigned_to_name: string | null;
     ticket_id?: string | null;  // Link to ticket if exists
+    // Campaign fields
+    is_campaign?: boolean;
+    campaign_id?: string | null;
+    campaign_name?: string | null;
+    campaign_reply_handling?: 'human' | 'ai' | null;
+    has_reply?: boolean;
     // NEW: Unknown sender fields
     sender_display_name?: string;
     sender_identifier_type?: string;
@@ -100,6 +109,7 @@ export default function ConversationPage() {
 
     const [showComposeEmailModal, setShowComposeEmailModal] = useState(false);
     const [showReplyDrawer, setShowReplyDrawer] = useState(false);
+    const [showForwardDialog, setShowForwardDialog] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
     // URL params for auto-opening compose modal with pre-filled data
@@ -114,10 +124,12 @@ export default function ConversationPage() {
         channel: 'all' | 'email' | 'whatsapp' | 'widget';
         mailbox: string | null;
         status: string | null;
+        campaignReplies: boolean;
     }>({
         channel: 'all',
         mailbox: null,
-        status: null
+        status: null,
+        campaignReplies: false
     });
     const [mailboxes, setMailboxes] = useState<Array<{ id: string; email: string; description?: string }>>([]);
 
@@ -160,8 +172,15 @@ export default function ConversationPage() {
     const fetchConversations = useCallback(async () => {
         setLoading(true);
         try {
+            const queryParams: any = { status: activeTab, limit: 50 };
+
+            // Pass campaign reply filter to backend
+            if (filters.campaignReplies) {
+                queryParams.campaignRepliesOnly = true;
+            }
+
             const [convRes, statsRes, macrosRes] = await Promise.all([
-                api.conversations.list({ status: activeTab, limit: 50 }),
+                api.conversations.list(queryParams),
                 api.conversations.getStats(),
                 api.macros.list(true)
             ]);
@@ -189,7 +208,7 @@ export default function ConversationPage() {
         } finally {
             setLoading(false);
         }
-    }, [activeTab]);
+    }, [activeTab, filters]);
 
     const fetchMessages = useCallback(async (conversationId: string) => {
         setLoadingMessages(true);
@@ -366,6 +385,8 @@ export default function ConversationPage() {
             );
         }
 
+
+
         return true;
     });
 
@@ -462,16 +483,16 @@ export default function ConversationPage() {
                                 onClick={() => setShowFilterModal(true)}
                                 className={cn(
                                     "relative p-2.5 rounded-xl transition-all duration-200",
-                                    (filters.channel !== 'all' || filters.mailbox || filters.status)
+                                    (filters.channel !== 'all' || filters.mailbox || filters.status || filters.campaignReplies)
                                         ? "bg-gradient-to-r from-blue-500 to-indigo-600 text-white shadow-sm"
                                         : "bg-gray-50 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
                                 )}
                                 title="Filter conversations"
                             >
                                 <FilterIcon className="h-4 w-4" />
-                                {(filters.channel !== 'all' || filters.mailbox || filters.status) && (
+                                {(filters.channel !== 'all' || filters.mailbox || filters.status || filters.campaignReplies) && (
                                     <span className="absolute -top-1 -right-1 h-4 w-4 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
-                                        {(filters.channel !== 'all' ? 1 : 0) + (filters.mailbox ? 1 : 0) + (filters.status ? 1 : 0)}
+                                        {(filters.channel !== 'all' ? 1 : 0) + (filters.mailbox ? 1 : 0) + (filters.status ? 1 : 0) + (filters.campaignReplies ? 1 : 0)}
                                     </span>
                                 )}
                             </button>
@@ -544,6 +565,21 @@ export default function ConversationPage() {
                                                 <p className="text-xs text-gray-400 truncate mt-1">
                                                     {conv.subject || `${conv.channel.charAt(0).toUpperCase() + conv.channel.slice(1)} conversation`}
                                                 </p>
+                                                {/* Campaign Badge */}
+                                                {conv.is_campaign && (
+                                                    <div className="flex items-center gap-1.5 mt-1.5">
+                                                        <Badge variant="secondary" className="text-[10px] px-1.5 py-0.5 h-5 font-medium bg-blue-50 text-blue-700 hover:bg-blue-100 flex items-center gap-1">
+                                                            <Target className="h-2.5 w-2.5" />
+                                                            {conv.campaign_name || 'Campaign'}
+                                                        </Badge>
+                                                        {conv.campaign_reply_handling === 'ai' && (
+                                                            <Badge variant="outline" className="text-[10px] px-1.5 py-0.5 h-5 font-medium border-purple-200 text-purple-700 bg-purple-50/50 flex items-center gap-0.5">
+                                                                <Bot className="h-2.5 w-2.5" />
+                                                                AI
+                                                            </Badge>
+                                                        )}
+                                                    </div>
+                                                )}
                                                 {/* Unknown contact badge in list */}
                                                 {!conv.contact_id && conv.sender_display_name && (
                                                     <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-50 text-amber-600 text-[10px] font-medium mt-1.5">
@@ -557,6 +593,13 @@ export default function ConversationPage() {
                                                     <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-rose-50 text-rose-600 text-[10px] font-medium mt-1.5">
                                                         <Ticket className="h-2.5 w-2.5" />
                                                         Ticket Created
+                                                    </span>
+                                                )}
+                                                {/* Campaign badge */}
+                                                {conv.is_campaign && conv.campaign_name && (
+                                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 text-[10px] font-medium mt-1.5">
+                                                        <Send className="h-2.5 w-2.5" />
+                                                        Campaign: {conv.campaign_name}
                                                     </span>
                                                 )}
                                             </div>
@@ -622,6 +665,14 @@ export default function ConversationPage() {
                                                 <span>Create Ticket</span>
                                             </button>
                                         )}
+                                        <button
+                                            onClick={() => setShowForwardDialog(true)}
+                                            className="flex items-center gap-1.5 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-all duration-200 text-xs font-medium"
+                                            title="Forward conversation to another user"
+                                        >
+                                            <Forward className="h-3.5 w-3.5" />
+                                            <span>Forward</span>
+                                        </button>
                                         <button className="p-2.5 hover:bg-gray-100 rounded-xl transition-all duration-200">
                                             <Star className="h-4 w-4 text-gray-400" />
                                         </button>
@@ -646,6 +697,35 @@ export default function ConversationPage() {
                                         </button>
                                     </div>
                                 </div>
+                                {/* Campaign Info Banner */}
+                                {selectedConversation.is_campaign && (
+                                    <div className="mt-4 bg-gradient-to-r from-blue-50 to-indigo-50 border-l-4 border-blue-500 p-4 rounded-r-xl">
+                                        <div className="flex items-center gap-3">
+                                            <div className="h-10 w-10 rounded-xl bg-blue-500 flex items-center justify-center">
+                                                <Target className="h-5 w-5 text-white" />
+                                            </div>
+                                            <div className="flex-1">
+                                                <p className="font-semibold text-gray-900 text-sm flex items-center gap-2">
+                                                    Campaign Outreach
+                                                    {selectedConversation.campaign_reply_handling === 'ai' ? (
+                                                        <Badge variant="outline" className="text-[10px] px-2 py-0.5 h-5 font-medium border-purple-200 text-purple-700 bg-purple-50/50 flex items-center gap-1">
+                                                            <Bot className="h-2.5 w-2.5" />
+                                                            AI Handled
+                                                        </Badge>
+                                                    ) : (
+                                                        <Badge variant="outline" className="text-[10px] px-2 py-0.5 h-5 font-medium border-gray-300 text-gray-700 bg-white flex items-center gap-1">
+                                                            <User className="h-2.5 w-2.5" />
+                                                            Human Handled
+                                                        </Badge>
+                                                    )}
+                                                </p>
+                                                <p className="text-xs text-gray-600 mt-0.5">
+                                                    From: <span className="font-medium">{selectedConversation.campaign_name || 'Unknown Campaign'}</span>
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
                                 {/* Unknown Contact Indicator - shown below header */}
                                 <UnknownContactIndicator
                                     conversation={{
@@ -1020,6 +1100,19 @@ export default function ConversationPage() {
                 onApplyFilters={setFilters}
                 mailboxes={mailboxes}
             />
+
+            {/* Forward Conversation Dialog */}
+            {showForwardDialog && selectedConversation && (
+                <ForwardConversationDialog
+                    conversationId={selectedConversation.id}
+                    conversationSubject={selectedConversation.subject || `Conversation with ${selectedConversation.contact_name || selectedConversation.sender_display_name || 'Unknown'}`}
+                    onClose={() => setShowForwardDialog(false)}
+                    onSuccess={() => {
+                        fetchConversations();
+                        setShowForwardDialog(false);
+                    }}
+                />
+            )}
         </div>
     );
 }

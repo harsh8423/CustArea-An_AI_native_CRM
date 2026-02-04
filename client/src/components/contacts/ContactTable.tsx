@@ -92,7 +92,7 @@ export function ContactTable({
 
     return (
         <div className="flex flex-col h-full bg-white">
-            <div className="flex-1 overflow-x-auto relative">
+            <div className="flex-1 overflow-x-auto overflow-y-auto relative">
                 <table className="w-full text-left border-collapse min-w-max">
                     <thead className="sticky top-0 z-20 bg-white border-b border-gray-100">
                         <tr>

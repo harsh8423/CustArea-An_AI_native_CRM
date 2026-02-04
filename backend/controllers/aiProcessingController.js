@@ -77,7 +77,35 @@ async function queueMessageForAI(req, res) {
         }
 
         // Otherwise check if AI should respond for this channel
-        const aiEnabled = await shouldAgentRespond(tenantId, channel);
+        // Check if this is a campaign conversation
+        const campaignCheck = await pool.query(
+            `SELECT c.campaign_id, oc.reply_handling 
+             FROM conversations c
+             JOIN outreach_campaigns oc ON c.campaign_id = oc.id
+             WHERE c.id = $1 AND c.is_campaign = true`,
+            [conversationId]
+        );
+
+        let agentType = 'default';
+        let campaignId = null;
+
+        if (campaignCheck.rows.length > 0) {
+            const campaignInfo = campaignCheck.rows[0];
+            if (campaignInfo.reply_handling === 'ai') {
+                agentType = 'campaign';
+                campaignId = campaignInfo.campaign_id;
+                console.log(`[AI Queue] Detected campaign conversation ${conversationId} (Campaign: ${campaignId})`);
+            }
+        }
+
+        // Otherwise check if AI should respond for this channel (only if not campaign or if campaign uses AI)
+        // If it's a campaign with reply_handling='manual', we shouldn't act (unless configured otherwise)
+        let aiEnabled = false;
+        if (agentType === 'campaign') {
+            aiEnabled = true; // Always enable for campaign if configured
+        } else {
+             aiEnabled = await shouldAgentRespond(tenantId, channel);
+        }
 
         if (!aiEnabled) {
             console.log(`[AI Queue] No workflow or AI enabled for ${channel} (tenant: ${tenantId})`);
@@ -88,7 +116,7 @@ async function queueMessageForAI(req, res) {
         }
 
         // Queue the message for AI processing
-        await queueIncomingMessage(messageId, tenantId, conversationId, channel, false);
+        await queueIncomingMessage(messageId, tenantId, conversationId, channel, false, null, agentType, campaignId);
         
         console.log(`[AI Queue] Queued message ${messageId} for AI processing (${channel})`);
 

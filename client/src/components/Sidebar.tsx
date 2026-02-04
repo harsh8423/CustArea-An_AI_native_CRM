@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils"
 import { useState } from "react"
 import { api } from "@/lib/api"
 import { useFeatures } from "@/contexts/FeatureContext"
+import { usePermissions } from "@/hooks/usePermissions"
 import {
     Bot,
     BarChart2,
@@ -13,6 +14,8 @@ import {
     Settings,
     User,
     LayoutDashboard,
+    ShieldCheck,
+    UserCog,
     Megaphone,
     MessageSquare,
     ChevronRight,
@@ -83,7 +86,7 @@ const routes: Route[] = [
         icon: Megaphone,
         href: "/campaign",
         color: "from-orange-400 to-rose-500",
-        feature: "campaign"  // Optional feature
+        feature: "campaign"  // Matches 'campaign' feature_key
     },
     {
         label: "Conversation",
@@ -97,7 +100,7 @@ const routes: Route[] = [
         icon: Phone,
         href: "/phone-calls",
         color: "from-blue-500 to-cyan-500",
-        feature: "phone_calls",  // Optional feature
+        feature: "phone_calls",  // Matches 'phone_calls' feature_key
         subItems: [
             { label: "Dialer", href: "/phone-calls?tab=dialer", icon: Phone },
             { label: "Logs", href: "/phone-calls?tab=logs", icon: Phone },
@@ -110,7 +113,7 @@ const routes: Route[] = [
         icon: Ticket,
         href: "/tickets",
         color: "from-rose-500 to-pink-600",
-        feature: "ticketing",  // Optional feature
+        feature: "ticketing",  // Matches 'ticketing' feature_key
         subItems: [
             { label: "All Tickets", href: "/tickets", icon: List },
             { label: "New", href: "/tickets?status=new", icon: AlertCircle, isStatusFilter: true },
@@ -129,7 +132,7 @@ const routes: Route[] = [
         icon: GitBranch,
         href: "/workflow",
         color: "from-pink-500 to-rose-500",
-        feature: "workflow"  // Optional feature
+        feature: "workflow"  // Matches 'workflow' feature_key
     },
     {
         label: "AI Agent",
@@ -167,7 +170,13 @@ const routes: Route[] = [
         icon: BarChart2,
         href: "/report",
         color: "from-amber-500 to-orange-600",
-        feature: "reports"  // Optional feature
+        feature: "reports"  // Matches 'reports' feature_key
+    },
+    {
+        label: "Settings",
+        icon: Settings,
+        href: "/settings",
+        color: "from-gray-500 to-slate-600",
     },
 ]
 
@@ -309,19 +318,6 @@ export function Sidebar() {
                             </div>
                         )}
                     </button>
-                    <Link
-                        href="/settings"
-                        className={cn(
-                            "flex items-center px-3 py-2.5 text-gray-600 hover:bg-white/60 rounded-xl transition-all duration-200 w-full group",
-                            isCollapsed ? "justify-center" : ""
-                        )}
-                    >
-                        <Settings className={cn(
-                            "h-4 w-4 text-gray-500 group-hover:text-gray-700 transition-colors",
-                            isCollapsed ? "mr-0" : "mr-3"
-                        )} />
-                        {!isCollapsed && <span className="text-sm font-medium group-hover:text-gray-800">Settings</span>}
-                    </Link>
                     <button className={cn(
                         "flex items-center px-3 py-2.5 text-gray-600 hover:bg-white/60 rounded-xl transition-all duration-200 w-full group",
                         isCollapsed ? "justify-center" : ""
