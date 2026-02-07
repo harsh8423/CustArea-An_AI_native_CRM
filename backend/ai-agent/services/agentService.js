@@ -228,7 +228,7 @@ async function checkGuardrails(tenantId, agentId, text, isInput = true) {
 /**
  * Main chat function - process a message through the agent
  */
-async function chat(tenantId, conversationId, contactId, userMessage, messageHistory = []) {
+async function chat(tenantId, conversationId, contactId, userMessage, messageHistory = [], channel = 'chat', instruction = '') {
     try {
         // Get agent configuration
         const agent = await getAgentForTenant(tenantId);
@@ -285,6 +285,12 @@ async function chat(tenantId, conversationId, contactId, userMessage, messageHis
         const messages = [
             { role: 'system', content: systemPrompt }
         ];
+
+        // Add Channel Instruction
+        if (channel && channel !== 'chat') {
+            const channelPrompt = `\n\nCONTEXT: You are responding via ${channel.toUpperCase()}.\n${instruction || ''}`;
+            messages.push({ role: 'system', content: channelPrompt });
+        }
 
         // Add context if available
         if (context.contact && context.contact.name) {
@@ -349,7 +355,9 @@ async function chat(tenantId, conversationId, contactId, userMessage, messageHis
             finishReason: completion.choices[0].finish_reason
         }, null, 2));
 
+        // ... existing code ...
         // Handle tool calls if any
+        let toolsUsed = [];
         if (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
             console.log(`[AgentService] Processing ${assistantMessage.tool_calls.length} tool call(s)`);
             const toolResults = [];
@@ -358,7 +366,10 @@ async function chat(tenantId, conversationId, contactId, userMessage, messageHis
                 console.log(`[AgentService] Tool Call: ${toolCall.function.name}`);
                 console.log(`[AgentService] Tool Arguments:`, toolCall.function.arguments);
                 
+                toolsUsed.push(toolCall.function.name); // Track tool name
+
                 const args = JSON.parse(toolCall.function.arguments);
+                // ... rest of tool execution logic
                 const toolContext = {
                     conversationId,
                     contactId
@@ -375,19 +386,21 @@ async function chat(tenantId, conversationId, contactId, userMessage, messageHis
 
                 // Check for escalation from tool
                 if (result.action === 'escalate') {
+                    // ... escalation logic
                     console.log(`[AgentService] Tool requested escalation`);
                     return {
                         response: "I'll connect you with a member of our team who can help further.",
                         metadata: {
                             escalate: true,
                             reason: result.reason,
-                            priority: result.priority
+                            priority: result.priority,
+                            toolsUsed // Include tools even on escalation
                         },
                         detectedAttributes
                     };
                 }
             }
-
+            // ... rest of logic
             // Get final response after tool calls
             messages.push(assistantMessage);
             messages.push(...toolResults);
@@ -414,6 +427,7 @@ async function chat(tenantId, conversationId, contactId, userMessage, messageHis
                 preview: response?.substring(0, 100)
             });
         } else {
+             // ... existing else block
             response = assistantMessage.content;
             console.log(`[AgentService] Direct response (no tools):`, {
                 length: response?.length || 0,
@@ -443,7 +457,8 @@ async function chat(tenantId, conversationId, contactId, userMessage, messageHis
             metadata: {
                 model,
                 provider: agent.llmProvider,
-                knowledgeUsed: !!knowledgeContext
+                knowledgeUsed: !!knowledgeContext,
+                toolsUsed: toolsUsed.length > 0 ? toolsUsed : undefined
             },
             detectedAttributes
         };

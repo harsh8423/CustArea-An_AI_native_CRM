@@ -69,7 +69,7 @@ async function processCampaignReply(messageId, tenantId, conversationId, campaig
             `INSERT INTO messages (
                 tenant_id, conversation_id, direction, role, channel,
                 content_text, content_html, status
-            ) VALUES ($1, $2, 'outbound', 'agent', $3, $4, $5, 'pending')
+            ) VALUES ($1, $2, 'outbound', 'assistant', $3, $4, $5, 'pending')
             RETURNING *`,
             [
                 tenantId,

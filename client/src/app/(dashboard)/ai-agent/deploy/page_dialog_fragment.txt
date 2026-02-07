@@ -1,0 +1,78 @@
+            </div>
+
+            {/* Configuration Dialog */}
+            {configDialogOpen && selectedDeployment && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+                        <div className="p-6 border-b border-gray-200">
+                            <div className="flex items-center justify-between">
+                                <h2 className="text-xl font-semibold text-gray-900 flex items-center gap-2">
+                                    <SettingsIcon className="w-5 h-5" />
+                                    Configure AI Settings
+                                </h2>
+                                <button
+                                    onClick={() => setConfigDialogOpen(false)}
+                                    className="text-gray-400 hover:text-gray-600"
+                                >
+                                    <span className="text-2xl">×</span>
+                                </button>
+                            </div>
+                            <p className="text-sm text-gray-600 mt-2">
+                                {selectedDeployment.resource_display_name}
+                            </p>
+                        </div>
+
+                        <div className="p-6">
+                            <div className="space-y-6">
+                                {/* Coming Soon Notice */}
+                                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                                    <p className="text-sm text-yellow-800">
+                                        <strong>Configuration options coming soon!</strong><br />
+                                        You'll be able to set:
+                                    </p>
+                                    <ul className="mt-2 space-y-1 text-sm text-yellow-700 ml-4">
+                                        <li>• Active days (Monday-Sunday)</li>
+                                        <li>• Active hours (start time - end time)</li>
+                                        <li>• Timezone</li>
+                                        <li>• Priority mode (Always AI, Always Human, Scheduled)</li>
+                                        <li>• Away messages</li>
+                                    </ul>
+                                </div>
+
+                                {/* Current settings display */}
+                                {selectedDeployment.schedule_enabled && (
+                                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                                        <h3 className="font-medium text-blue-900 mb-2">Current Schedule</h3>
+                                        <div className="space-y-1 text-sm text-blue-800">
+                                            {selectedDeployment.schedule_start_time && (
+                                                <p>Start: {selectedDeployment.schedule_start_time}</p>
+                                            )}
+                                            {selectedDeployment.schedule_end_time && (
+                                                <p>End: {selectedDeployment.schedule_end_time}</p>
+                                            )}
+                                            {selectedDeployment.schedule_days && (
+                                                <p>Days: {selectedDeployment.schedule_days.join(', ')}</p>
+                                            )}
+                                            {selectedDeployment.schedule_timezone && (
+                                                <p>Timezone: {selectedDeployment.schedule_timezone}</p>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="p-6 border-t border-gray-200 flex justify-end gap-3">
+                            <button
+                                onClick={() => setConfigDialogOpen(false)}
+                                className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+                            >
+                                Close
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}

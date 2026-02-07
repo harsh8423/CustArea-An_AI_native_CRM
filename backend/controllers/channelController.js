@@ -263,12 +263,11 @@ exports.getInboundEmails = async (req, res) => {
         const tenantId = req.user.tenantId;
 
         const result = await pool.query(`
-            SELECT DISTINCT
+            SELECT 
                 id,
                 email_address,
-                provider,
                 is_active
-            FROM inbound_emails
+            FROM allowed_inbound_emails
             WHERE tenant_id = $1 AND is_active = true
             ORDER BY email_address
         `, [tenantId]);
@@ -287,28 +286,32 @@ exports.getOutboundEmails = async (req, res) => {
     try {
         const tenantId = req.user.tenantId;
 
-        // Get SES emails
+        // Get SES allowed from emails
         const sesResult = await pool.query(`
             SELECT 
-                id,
-                'ses' as email_type,
-                from_email as email_address,
-                from_name,
-                is_active
-            FROM ses_email_configs
-            WHERE tenant_id = $1 AND is_active = true
+                tafe.id,
+                'identity' as type,
+                tafe.email_address,
+                tsi.identity_value as provider_name,
+                tafe.ses_identity_id,
+                tafe.id as allowed_from_email_id
+            FROM tenant_allowed_from_emails tafe
+            LEFT JOIN tenant_ses_identities tsi ON tsi.id = tafe.ses_identity_id
+            WHERE tafe.tenant_id = $1
         `, [tenantId]);
 
-        // Get OAuth emails (Gmail/Outlook)
+        // Get OAuth email connections (Gmail/Outlook)
         const oauthResult = await pool.query(`
-            SELECT DISTINCT
-                connection_id as id,
-                provider as email_type,
-                email as email_address,
-                display_name as from_name,
-                true as is_active
-            FROM oauth_email_connections
-            WHERE tenant_id = $1 AND is_active = true
+            SELECT 
+                tec.id,
+                'connection' as type,
+                tec.email_address,
+                ep.provider_type as provider_name,
+                tec.id as email_connection_id,
+                tec.display_name
+            FROM tenant_email_connections tec
+            LEFT JOIN email_providers ep ON ep.id = tec.provider_id
+            WHERE tec.tenant_id = $1 AND tec.is_active = true
         `, [tenantId]);
 
         const emails = [...sesResult.rows, ...oauthResult.rows];

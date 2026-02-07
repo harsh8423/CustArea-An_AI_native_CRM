@@ -9,7 +9,7 @@ const { v4: uuidv4 } = require('uuid');
  * CallSession - Represents state for a single phone call
  */
 class CallSession {
-    constructor(id, tenantId, contactId, method, direction, fromNumber = null, toNumber = null, customInstruction = null) {
+    constructor(id, tenantId, contactId, method, direction, fromNumber = null, toNumber = null, customInstruction = null, userId = null, aiConfig = {}) {
         this.id = id;                     // Unique session ID
         this.tenantId = tenantId;         // Tenant for AI Agent config
         this.contactId = contactId;       // Contact for context loading
@@ -21,6 +21,8 @@ class CallSession {
         this.fromNumber = fromNumber;     // Phone number calling from
         this.toNumber = toNumber;         // Phone number calling to
         this.customInstruction = customInstruction;  // Per-call custom AI instruction
+        this.userId = userId;             // User who initiated the call (if outbound)
+        this.aiConfig = aiConfig;         // AI configuration (voice, model, provider, etc.)
         this.history = [];                // Message history for LLM context
         this.startTime = Date.now();
         this.endTime = null;
@@ -105,12 +107,12 @@ class CallSessionManager {
     /**
      * Create a new call session
      */
-    create(tenantId, contactId, method, direction = 'outbound', fromNumber = null, toNumber = null, customInstruction = null) {
+    create(tenantId, contactId, method, direction = 'outbound', fromNumber = null, toNumber = null, customInstruction = null, userId = null, aiConfig = {}) {
         const id = uuidv4();
-        const session = new CallSession(id, tenantId, contactId, method, direction, fromNumber, toNumber, customInstruction);
+        const session = new CallSession(id, tenantId, contactId, method, direction, fromNumber, toNumber, customInstruction, userId, aiConfig);
         this.sessions.set(id, session);
         
-        console.log(`[CallSession] Created session ${id} (${method}, ${direction}, to: ${toNumber})`);
+        console.log(`[CallSession] Created session ${id} (${method}, ${direction}, to: ${toNumber}, user: ${userId})`);
         return session;
     }
 

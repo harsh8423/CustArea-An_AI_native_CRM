@@ -1,31 +1,52 @@
 import React from 'react';
+import DateRangePicker, { DateRange } from '@/components/ui/date-range-picker';
 
 interface TimeRangeSelectorProps {
-    value: 'daily' | 'weekly' | 'monthly';
-    onChange: (value: 'daily' | 'weekly' | 'monthly') => void;
+    value: 'daily' | 'weekly' | 'monthly' | 'custom';
+    onChange: (value: 'daily' | 'weekly' | 'monthly' | 'custom') => void;
+    customDateRange?: DateRange;
+    onCustomDateChange?: (range: DateRange) => void;
 }
 
-export default function TimeRangeSelector({ value, onChange }: TimeRangeSelectorProps) {
-    const options = [
-        { value: 'daily', label: 'Daily' },
-        { value: 'weekly', label: 'Weekly' },
-        { value: 'monthly', label: 'Monthly' }
-    ] as const;
+export default function TimeRangeSelector({
+    value,
+    onChange,
+    customDateRange,
+    onCustomDateChange
+}: TimeRangeSelectorProps) {
+    const ranges = [
+        { value: 'daily' as const, label: 'Daily' },
+        { value: 'weekly' as const, label: 'Weekly' },
+        { value: 'monthly' as const, label: 'Monthly' },
+        { value: 'custom' as const, label: 'Custom Range' }
+    ];
 
     return (
-        <div className="flex items-center space-x-2 bg-gray-100 rounded-lg p-1">
-            {options.map((option) => (
-                <button
-                    key={option.value}
-                    onClick={() => onChange(option.value)}
-                    className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${value === option.value
-                        ? 'bg-white text-gray-900 shadow-sm'
-                        : 'text-gray-600 hover:text-gray-900'
-                        }`}
-                >
-                    {option.label}
-                </button>
-            ))}
+        <div>
+            <div className="inline-flex rounded-lg border border-gray-200 bg-white p-1">
+                {ranges.map((range) => (
+                    <button
+                        key={range.value}
+                        onClick={() => onChange(range.value)}
+                        className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${value === range.value
+                                ? 'bg-blue-600 text-white'
+                                : 'text-gray-700 hover:bg-gray-100'
+                            }`}
+                    >
+                        {range.label}
+                    </button>
+                ))}
+            </div>
+
+            {/* Show DateRangePicker when custom is selected */}
+            {value === 'custom' && customDateRange && onCustomDateChange && (
+                <div className="mt-4">
+                    <DateRangePicker
+                        value={customDateRange}
+                        onChange={onCustomDateChange}
+                    />
+                </div>
+            )}
         </div>
     );
 }

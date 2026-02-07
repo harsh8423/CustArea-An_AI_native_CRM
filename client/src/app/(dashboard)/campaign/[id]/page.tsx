@@ -205,32 +205,44 @@ function OverviewTab({ campaign, analytics }: any) {
     const stats = [
         {
             label: 'Total Enrolled',
-            value: analytics?.total_enrolled || 0,
+            value: analytics?.total_contacts_enrolled || 0,
             icon: Users,
             color: 'from-blue-500 to-indigo-600',
         },
         {
             label: 'Emails Sent',
-            value: analytics?.emails_sent || 0,
+            value: analytics?.total_emails_sent || 0,
             icon: Send,
             color: 'from-purple-500 to-pink-600',
         },
         {
+            label: 'Sent by Human',
+            value: analytics?.emails_sent_by_human || 0,
+            icon: UserCheck,
+            color: 'from-blue-400 to-blue-600',
+        },
+        {
+            label: 'Sent by AI',
+            value: analytics?.emails_sent_by_ai || 0,
+            icon: Sparkles,
+            color: 'from-purple-400 to-purple-600',
+        },
+        {
             label: 'Replied',
-            value: analytics?.replied || 0,
+            value: analytics?.total_replies || 0,
             icon: MessageCircle,
             color: 'from-green-500 to-emerald-600',
         },
         {
             label: 'Pending',
-            value: analytics?.pending || 0,
+            value: (analytics?.total_contacts_valid || 0) - (analytics?.total_replies || 0) - (analytics?.total_contacts_skipped || 0),
             icon: Clock,
             color: 'from-amber-500 to-orange-600',
         },
     ];
 
-    const replyRate = analytics?.emails_sent > 0
-        ? ((analytics?.replied / analytics?.emails_sent) * 100).toFixed(1)
+    const replyRate = analytics?.total_contacts_enrolled > 0
+        ? ((analytics?.total_replies / analytics?.total_contacts_enrolled) * 100).toFixed(1)
         : '0.0';
 
     return (
@@ -274,8 +286,8 @@ function OverviewTab({ campaign, analytics }: any) {
                     <div>
                         <div className="text-sm text-gray-500 mb-1">Bounce Rate</div>
                         <div className="text-3xl font-bold text-red-600">
-                            {analytics?.emails_sent > 0
-                                ? ((analytics.bounced / analytics.emails_sent) * 100).toFixed(1)
+                            {analytics?.total_emails_sent > 0
+                                ? ((analytics.bounced / analytics.total_emails_sent) * 100).toFixed(1)
                                 : '0.0'}%
                         </div>
                     </div>
@@ -380,6 +392,18 @@ function TemplateCard({ template, index, label }: any) {
                     <div className="text-xs text-gray-500 mb-1">Subject</div>
                     <div className="text-sm font-medium text-gray-900">{template.subject}</div>
                 </div>
+
+                {template.template_type === 'follow_up' && template.wait_period_value && (
+                    <div>
+                        <div className="text-xs text-gray-500 mb-1">Send After</div>
+                        <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium text-blue-600 bg-blue-50 px-2 py-1 rounded">
+                                {template.wait_period_value} {template.wait_period_unit}
+                            </span>
+                            <span className="text-xs text-gray-400">from previous email</span>
+                        </div>
+                    </div>
+                )}
 
                 {expanded && (
                     <>

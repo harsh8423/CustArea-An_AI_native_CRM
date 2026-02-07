@@ -3,7 +3,7 @@ import { analyticsApi, AnalyticsMetrics } from '@/lib/analyticsApi';
 
 interface UseAnalyticsParams {
     userId?: string;
-    timeRange?: 'daily' | 'weekly' | 'monthly';
+    timeRange?: 'daily' | 'weekly' | 'monthly' | 'custom';
     category?: string;
     startDate?: string;
     endDate?: string;

@@ -39,36 +39,49 @@ export default function LoginPage() {
     // Handle magic link callback from email
     useEffect(() => {
         const handleMagicLinkCallback = async () => {
-            // Parse hash parameters from URL
+            // Check for PKCE code in query params (via Supabase v2 / generateLink)
+            const code = searchParams.get('code')
+
+            // Check for Implicit flow in hash (Legacy / some configurations)
             const hash = window.location.hash
-            if (!hash || !hash.includes('access_token')) return
+            let accessToken = null
+            let type = searchParams.get('type') // Type might be in query even for hash flow
 
-            const params = new URLSearchParams(hash.substring(1)) // Remove '#' and parse
-            const accessToken = params.get('access_token')
-            const type = params.get('type')
+            if (code) {
+                // Found PKCE code
+            } else if (hash && hash.includes('access_token')) {
+                // Found Implicit hash
+                const params = new URLSearchParams(hash.substring(1))
+                accessToken = params.get('access_token')
+                if (!type) type = params.get('type')
+            } else {
+                return
+            }
 
-            if (!accessToken || type !== 'magiclink') return
+            // If we have neither code nor token, or type mismatch (optional check), return
+            if ((!code && !accessToken) || (type && type !== 'magiclink' && type !== 'recovery')) return
 
             setLoading(true)
             setError("")
 
             try {
-                // Decode JWT to extract email (JWT format: header.payload.signature)
-                const payloadBase64 = accessToken.split('.')[1]
-                const payloadJson = atob(payloadBase64)
-                const payload = JSON.parse(payloadJson)
-                const email = payload.email
+                let email = ""
 
-                if (!email) {
-                    setError("Could not extract email from authentication token")
-                    return
+                // If we have a hash token, we can extract email from JWT to pass to backend
+                // If we have a code, we can't extract email yet, verification will return user
+                if (accessToken) {
+                    const payloadBase64 = accessToken.split('.')[1]
+                    const payloadJson = atob(payloadBase64)
+                    const payload = JSON.parse(payloadJson)
+                    email = payload.email
                 }
 
                 // Verify the magic link with backend
                 const result = await api.auth.verifyMagicLink({
-                    email: email.toLowerCase(),
-                    supabaseToken: accessToken,
-                    companyName: "" // Not needed for existing users
+                    email: email ? email.toLowerCase() : undefined,
+                    supabaseToken: accessToken || undefined,
+                    code: code || undefined,
+                    companyName: ""
                 })
 
                 if (result.error) {
@@ -80,10 +93,9 @@ export default function LoginPage() {
                     localStorage.setItem("token", result.token)
                     document.cookie = `token=${result.token}; path=/; max-age=604800; SameSite=Strict`
 
-                    // Clean up URL hash
+                    // Clean up URL
                     window.location.hash = ''
-
-                    // Redirect to dashboard
+                    // Use replace to clear query params without reload if possible, or just push dashboard
                     router.push("/dashboard")
                 } else {
                     setError("Authentication failed. Please try again.")
@@ -95,15 +107,13 @@ export default function LoginPage() {
                 } else {
                     setError("Failed to verify magic link. Please try again.")
                 }
-                // Clean up URL hash on error
-                window.location.hash = ''
             } finally {
                 setLoading(false)
             }
         }
 
         handleMagicLinkCallback()
-    }, [router])
+    }, [router, searchParams])
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         setFormData({ ...formData, [e.target.name]: e.target.value })
@@ -203,7 +213,7 @@ export default function LoginPage() {
                             <div>
                                 <p className="font-medium">Check your email!</p>
                                 <p className="text-green-600/80 mt-1">
-                                    We've sent a magic link to <strong>{formData.email}</strong>.
+                                    We've sent a login link to <strong>{formData.email}</strong>.
                                     Click the link in the email to sign in.
                                 </p>
                             </div>
@@ -263,7 +273,7 @@ export default function LoginPage() {
                                     }}
                                     className="text-sm text-gray-600 hover:text-black transition-colors"
                                 >
-                                    Or use Magic Link instead
+                                    Get Login Link on email
                                 </button>
                             </div>
                         </form>
@@ -295,7 +305,7 @@ export default function LoginPage() {
                                     className="w-full py-2.5 font-semibold text-white bg-black rounded-lg hover:bg-gray-800 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
                                 >
                                     <Send className="h-4 w-4" />
-                                    {sendingLink ? "Sending..." : "Send Magic Link"}
+                                    {sendingLink ? "Sending..." : "Get Login Link"}
                                 </button>
                             ) : (
                                 <button
@@ -308,7 +318,7 @@ export default function LoginPage() {
                                         ? `Resend in ${resendCooldown}s`
                                         : sendingLink
                                             ? "Sending..."
-                                            : "Resend Magic Link"}
+                                            : "Resend Login Link"}
                                 </button>
                             )}
 

@@ -15,14 +15,21 @@ import UserSelector from './components/UserSelector';
 import ExportButton from './components/ExportButton';
 import ActivityLogsTable from './components/ActivityLogsTable';
 import AnalyticsCharts from './components/AnalyticsCharts';
+import CallHistoryTable from './components/CallHistoryTable';
 
 export default function ReportPage() {
     // State
-    const [timeRange, setTimeRange] = useState<'daily' | 'weekly' | 'monthly'>('daily');
-    const [category, setCategory] = useState('all');
+    const [timeRange, setTimeRange] = useState<'daily' | 'weekly' | 'monthly' | 'custom'>('daily');
+    const [category, setCategory] = useState<string>('all');
     const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
     const [isSuperAdmin, setIsSuperAdmin] = useState(false);
     const [activityLogsPage, setActivityLogsPage] = useState(1);
+
+    // Custom date range state
+    const [customDateRange, setCustomDateRange] = useState({
+        startDate: new Date(new Date().setDate(new Date().getDate() - 30)).toISOString(),
+        endDate: new Date().toISOString()
+    });
 
     // Check if user is super admin
     useEffect(() => {
@@ -40,19 +47,9 @@ export default function ReportPage() {
         checkPermissions();
     }, []);
 
-    // Date range for API calls (last 30 days)
-    const dateRange = useMemo(() => {
-        const endDate = new Date();
-        const startDate = new Date();
-        startDate.setDate(startDate.getDate() - 30);
-
-        return {
-            startDate: startDate.toISOString(),
-            endDate: endDate.toISOString()
-        };
-    }, []);
-
     // Fetch analytics data
+    // Note: We don't pass startDate/endDate for daily/weekly/monthly - backend calculates
+    // For 'custom' timeRange, we pass the custom date range
     const {
         data: analyticsData,
         loading: analyticsLoading,
@@ -62,8 +59,11 @@ export default function ReportPage() {
         userId: selectedUserId || undefined,
         timeRange,
         category: category !== 'all' ? category : undefined,
-        startDate: dateRange.startDate,
-        endDate: dateRange.endDate
+        // Only pass custom dates when timeRange is 'custom'
+        ...(timeRange === 'custom' && {
+            startDate: customDateRange.startDate,
+            endDate: customDateRange.endDate
+        })
     });
 
     // Fetch activity logs
@@ -76,8 +76,7 @@ export default function ReportPage() {
     } = useActivityLogs({
         userId: selectedUserId || undefined,
         category: category !== 'all' ? category : undefined,
-        startDate: dateRange.startDate,
-        endDate: dateRange.endDate,
+        // Let backend calculate date range based on current context
         page: activityLogsPage,
         limit: 50
     });
@@ -116,7 +115,12 @@ export default function ReportPage() {
 
                             {/* Filters */}
                             <div className="flex flex-wrap items-center gap-4">
-                                <TimeRangeSelector value={timeRange} onChange={setTimeRange} />
+                                <TimeRangeSelector
+                                    value={timeRange}
+                                    onChange={setTimeRange}
+                                    customDateRange={customDateRange}
+                                    onCustomDateChange={setCustomDateRange}
+                                />
                                 <CategoryFilter value={category} onChange={setCategory} />
                                 {isSuperAdmin && (
                                     <div className="flex items-center space-x-2">
@@ -130,8 +134,11 @@ export default function ReportPage() {
                                             userId: selectedUserId || undefined,
                                             timeRange,
                                             category: category !== 'all' ? category : undefined,
-                                            startDate: dateRange.startDate,
-                                            endDate: dateRange.endDate
+                                            // Include custom dates when using custom range
+                                            ...(timeRange === 'custom' && {
+                                                startDate: customDateRange.startDate,
+                                                endDate: customDateRange.endDate
+                                            })
                                         }}
                                     />
                                 </div>
@@ -148,7 +155,11 @@ export default function ReportPage() {
                         )}
 
                         {/* Metrics Overview */}
-                        <MetricsOverview metrics={analyticsData} loading={analyticsLoading} />
+                        <MetricsOverview
+                            metrics={analyticsData}
+                            loading={analyticsLoading}
+                            category={category}
+                        />
 
                         {/* Charts */}
                         <div className="mb-8">
@@ -162,17 +173,27 @@ export default function ReportPage() {
                             />
                         </div>
 
-                        {/* Activity Logs */}
+                        {/* Activity Logs / Call History */}
                         <div className="mb-8">
                             <h2 className="text-xl font-semibold text-gray-900 mb-4">
-                                Activity Log
+                                {category === 'phone' ? 'Call History Details' : 'Activity Log'}
                             </h2>
-                            <ActivityLogsTable
-                                logs={logs}
-                                loading={logsLoading}
-                                hasMore={hasMore}
-                                onLoadMore={loadMore}
-                            />
+
+                            {category === 'phone' ? (
+                                <CallHistoryTable
+                                    userId={selectedUserId || undefined}
+                                    timeRange={timeRange}
+                                    startDate={timeRange === 'custom' ? customDateRange.startDate : undefined}
+                                    endDate={timeRange === 'custom' ? customDateRange.endDate : undefined}
+                                />
+                            ) : (
+                                <ActivityLogsTable
+                                    logs={logs}
+                                    loading={logsLoading}
+                                    hasMore={hasMore}
+                                    onLoadMore={loadMore}
+                                />
+                            )}
                         </div>
                     </div>
                 </div>

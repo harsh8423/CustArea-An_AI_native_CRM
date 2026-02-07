@@ -8,7 +8,9 @@ const {
     createLeadsFromContacts, 
     updateLeadStage,
     updateLeadStatus,
-    updateLeadScore
+    updateLeadScore,
+    deleteLeads,
+    assignLead
 } = require('../controllers/leadController');
 
 router.use(authenticateToken);
@@ -19,5 +21,7 @@ router.post('/', requirePermission('leads.create'), createLeadsFromContacts);
 router.patch('/:id/stage', requirePermission('leads.edit'), updateLeadStage);
 router.patch('/:id/status', requirePermission('leads.edit'), updateLeadStatus);
 router.patch('/:id/score', requirePermission('leads.edit'), updateLeadScore);
+router.post('/:id/assign', requirePermission('leads.edit'), assignLead);
+router.delete('/', requirePermission('leads.delete'), deleteLeads);
 
 module.exports = router;

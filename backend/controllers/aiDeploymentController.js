@@ -11,13 +11,13 @@ async function getAIDeployments(req, res) {
         const tenantId = req.user.tenantId;
         const { channel } = req.query;
 
-        // Check if user has ai.deploy_all permission (admin)
+        // Check if user has ai.configure permission (admin)
         const { checkPermission } = require('../services/permissionService');
-        const hasDeployAll = await checkPermission(userId, 'ai.deploy_all');
+        const hasConfigurePermission = await checkPermission(userId, 'ai.configure');
 
         let query, params;
 
-        if (hasDeployAll) {
+        if (hasConfigurePermission) {
             // Admin: get all tenant deployments
             query = `
                 SELECT 
@@ -403,11 +403,87 @@ async function disableAIDeployment(req, res) {
     }
 }
 
+/**
+ * UTILITY FUNCTIONS for Lambda/Phone Handler
+ * These functions check if AI is enabled for specific resources
+ */
+
+/**
+ * Check if AI deployment is enabled for a specific inbound email address
+ * Used by: lambda_function.js for email processing
+ */
+async function checkAIEnabledForEmail(tenantId, inboundEmailAddress) {
+    try {
+        const result = await pool.query(`
+            SELECT * FROM check_ai_enabled_for_email($1, $2)
+        `, [tenantId, inboundEmailAddress]);
+
+        if (result.rows.length > 0 && result.rows[0].is_ai_enabled) {
+            return {
+                enabled: true,
+                deploymentId: result.rows[0].deployment_id,
+                welcomeMessage: result.rows[0].welcome_message,
+                handoffMessage: result.rows[0].handoff_message
+            };
+        }
+
+        return { enabled: false };
+    } catch (err) {
+        console.error('Error checking AI for email:', err);
+        return { enabled: false };
+    }
+}
+
+/**
+ * Check if AI deployment is enabled for a specific phone number
+ * Used by: phone webhook handlers for voice call processing
+ * Returns BOTH tenant phone feature status AND AI deployment status
+ */
+async function checkAIEnabledForPhone(tenantId, phoneNumber) {
+    try {
+        const result = await pool.query(`
+            SELECT * FROM check_ai_enabled_for_phone($1, $2)
+        `, [tenantId, phoneNumber]);
+
+        if (result.rows.length > 0) {
+            const row = result.rows[0];
+            
+            // Must have BOTH phone feature enabled AND AI deployment enabled
+            const bothEnabled = row.is_phone_feature_enabled && row.is_ai_enabled;
+
+            return {
+                phoneFeatureEnabled: row.is_phone_feature_enabled,
+                aiDeploymentEnabled: row.is_ai_enabled,
+                enabled: bothEnabled,  // true only if BOTH are true
+                deploymentId: row.deployment_id,
+                welcomeMessage: row.welcome_message,
+                agentInstructions: row.agent_instructions
+            };
+        }
+
+        return { 
+            phoneFeatureEnabled: false,
+            aiDeploymentEnabled: false,
+            enabled: false 
+        };
+    } catch (err) {
+        console.error('Error checking AI for phone:', err);
+        return { 
+            phoneFeatureEnabled: false,
+            aiDeploymentEnabled: false,
+            enabled: false 
+        };
+    }
+}
+
 module.exports = {
     getAIDeployments,
     createAIDeployment,
     updateAIDeployment,
     deleteAIDeployment,
     enableAIDeployment,
-    disableAIDeployment
+    disableAIDeployment,
+    // Export utility functions for use in lambda/phone handlers
+    checkAIEnabledForEmail,
+    checkAIEnabledForPhone
 };

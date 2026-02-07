@@ -131,6 +131,7 @@ async function processCampaign(campaignId, tenantId, dailyLimit) {
                          conversation_id = $1, 
                          last_sent_at = now(), 
                          current_follow_up_step = 1,
+                         emails_sent = 1,
                          next_send_at = $2,
                          sender_email_address = $3,
                          updated_at = now()
@@ -209,7 +210,35 @@ async function sendCampaignEmail(campaignId, tenantId, contact, template, campai
     const personalizedBodyHtml = personalizeContent(template.body_html, contact);
     const personalizedBodyText = personalizeContent(template.body_text || '', contact);
 
-    // Create conversation first (NEW conversation per outreach)
+    // Generate Message-ID for threading (Moved up for duplicate check)
+    const currentStep = contact.current_follow_up_step || 0;
+    const messageIdHeader = generateCampaignMessageId(campaignId, contact.contact_id, currentStep);
+
+    // --- DUPLICATE CHECK START ---
+    // Check if this specific campaign step message was already sent
+    const duplicateCheck = await client.query(
+        `SELECT conversation_id FROM messages 
+         WHERE metadata->>'messageIdHeader' = $1 
+         AND tenant_id = $2`,
+        [messageIdHeader, tenantId]
+    );
+
+    let conversationId;
+
+    if (duplicateCheck.rows.length > 0) {
+        console.log(`[Campaign ${campaignId}] Message already exists for contact ${contact.contact_id} step ${currentStep}. Skipping send.`);
+        // Use existing conversation ID so status update works correctly
+        conversationId = duplicateCheck.rows[0].conversation_id;
+        
+        return {
+            conversationId: conversationId,
+            rotationEmail: rotationEmail,
+            alreadySent: true
+        };
+    }
+    // --- DUPLICATE CHECK END ---
+
+    // Create conversation (NEW conversation per outreach)
     // Store campaign_sender_email for reply consistency with rotating emails
     const conversationResult = await client.query(
         `INSERT INTO conversations (
@@ -220,12 +249,8 @@ async function sendCampaignEmail(campaignId, tenantId, contact, template, campai
         [tenantId, contact.contact_id, contact.email, campaignId, rotationEmail.emailAddress, personalizedSubject]
     );
 
-    const conversationId = conversationResult.rows[0].id;
+    conversationId = conversationResult.rows[0].id;
     console.log(`Created campaign conversation ${conversationId} with sender: ${rotationEmail.emailAddress}`);
-
-    // Generate Message-ID for threading
-    const currentStep = contact.current_follow_up_step || 0;
-    const messageIdHeader = generateCampaignMessageId(campaignId, contact.contact_id, currentStep);
     
     // Get threading headers if this is a follow-up (conversation already has messages)
     const { getConversationThreadingHeaders } = require('../../email/services/emailThreadingHelper');
@@ -275,7 +300,7 @@ async function sendCampaignEmail(campaignId, tenantId, contact, template, campai
             tenant_id, conversation_id, direction, role, channel, 
             content_text, content_html, provider_message_id, 
             provider, status, sent_at, metadata
-        ) VALUES ($1, $2, 'outbound', 'agent', 'email', $3, $4, $5, $6, 'sent', now(), $7)
+        ) VALUES ($1, $2, 'outbound', 'system', 'email', $3, $4, $5, $6, 'sent', now(), $7)
         RETURNING id`,
         [
             tenantId,
@@ -287,7 +312,8 @@ async function sendCampaignEmail(campaignId, tenantId, contact, template, campai
             JSON.stringify({
                 from: fromEmail,
                 to: contact.email,
-                subject: personalizedSubject
+                subject: personalizedSubject,
+                messageIdHeader: messageIdHeader
             })
         ]
     );
@@ -307,18 +333,15 @@ async function sendCampaignEmail(campaignId, tenantId, contact, template, campai
         await emailRotationService.incrementDailySent(rotationEmail.id);
     }
 
-    // Update campaign analytics - increment emails sent
-    await client.query(
-        `UPDATE campaign_analytics
-         SET total_emails_sent = total_emails_sent + 1,
-             emails_sent_today = emails_sent_today + 1,
-             last_updated_at = now()
-         WHERE campaign_id = $1`,
-        [campaignId]
-    );
 
-    // Increment campaign daily sent
-    await emailRotationService.incrementCampaignDailySent(campaignId);
+    // NOTE: campaign_analytics is updated automatically by the database trigger
+    // when campaign_contacts status changes. No manual increment needed here.
+
+
+
+    // NOTE: Campaign daily sent tracking removed - the database trigger
+    // on campaign_contacts handles all campaign_analytics updates automatically
+
 
     console.log(`Email sent to ${contact.email} for campaign ${campaignId}`);
     

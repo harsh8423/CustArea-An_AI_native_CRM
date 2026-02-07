@@ -4,8 +4,9 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
     Search, Filter, Eye, Star, Phone, Mail, Building, Tag,
-    ChevronDown, X, ArrowLeft, LayoutGrid
+    ChevronDown, X, ArrowLeft, LayoutGrid, Trash2, UserPlus
 } from "lucide-react";
+import AssignLeadModal from "./components/AssignLeadModal";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -68,6 +69,10 @@ export default function LeadsPage() {
     const [selectedScore, setSelectedScore] = useState<number | null>(null);
     const [isStageDropdownOpen, setIsStageDropdownOpen] = useState(false);
     const [isScoreDropdownOpen, setIsScoreDropdownOpen] = useState(false);
+    const [selectedLeads, setSelectedLeads] = useState<string[]>([]);
+    const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+    const [isDeleting, setIsDeleting] = useState(false);
+    const [assignModalLeadId, setAssignModalLeadId] = useState<string | null>(null);
 
     const fetchLeads = useCallback(async () => {
         setLoading(true);
@@ -123,6 +128,39 @@ export default function LeadsPage() {
 
     const hasFilters = search || selectedStage || selectedScore !== null;
 
+    const handleSelectAll = () => {
+        if (selectedLeads.length === leads.length) {
+            setSelectedLeads([]);
+        } else {
+            setSelectedLeads(leads.map(l => l.id));
+        }
+    };
+
+    const handleSelectLead = (leadId: string) => {
+        if (selectedLeads.includes(leadId)) {
+            setSelectedLeads(selectedLeads.filter(id => id !== leadId));
+        } else {
+            setSelectedLeads([...selectedLeads, leadId]);
+        }
+    };
+
+    const handleDeleteLeads = async () => {
+        if (selectedLeads.length === 0) return;
+
+        setIsDeleting(true);
+        try {
+            await api.leads.delete(selectedLeads);
+            setSelectedLeads([]);
+            setShowDeleteConfirm(false);
+            fetchLeads();
+        } catch (err) {
+            console.error("Failed to delete leads", err);
+            alert("Failed to delete leads. Please try again.");
+        } finally {
+            setIsDeleting(false);
+        }
+    };
+
     return (
         <div className="h-full flex flex-col bg-[#eff0eb]">
             <div className="flex-1 bg-white rounded-tl-3xl rounded-br-2xl mt-4 mr-4 mb-4 overflow-hidden flex flex-col shadow-[0px_1px_4px_0px_rgba(20,20,20,0.15)]">
@@ -156,8 +194,19 @@ export default function LeadsPage() {
                             </button>
                         </div>
                     </div>
-                    <div className="text-sm text-gray-500">
-                        <span className="font-semibold text-gray-900">{leads.length}</span> leads
+                    <div className="flex items-center gap-3">
+                        {selectedLeads.length > 0 && (
+                            <button
+                                onClick={() => setShowDeleteConfirm(true)}
+                                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition"
+                            >
+                                <Trash2 className="h-4 w-4" />
+                                Delete {selectedLeads.length} Lead{selectedLeads.length > 1 ? 's' : ''}
+                            </button>
+                        )}
+                        <div className="text-sm text-gray-500">
+                            <span className="font-semibold text-gray-900">{leads.length}</span> leads
+                        </div>
                     </div>
                 </div>
 
@@ -275,6 +324,14 @@ export default function LeadsPage() {
                     <table className="w-full">
                         <thead className="bg-gray-50 sticky top-0 z-10">
                             <tr>
+                                <th className="px-4 py-3 text-left">
+                                    <input
+                                        type="checkbox"
+                                        checked={selectedLeads.length === leads.length && leads.length > 0}
+                                        onChange={handleSelectAll}
+                                        className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                                    />
+                                </th>
                                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Name</th>
                                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Email</th>
                                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Phone</th>
@@ -287,13 +344,13 @@ export default function LeadsPage() {
                         <tbody className="divide-y divide-gray-100">
                             {loading ? (
                                 <tr>
-                                    <td colSpan={7} className="px-4 py-12 text-center text-gray-500">
+                                    <td colSpan={8} className="px-4 py-12 text-center text-gray-500">
                                         Loading leads...
                                     </td>
                                 </tr>
                             ) : leads.length === 0 ? (
                                 <tr>
-                                    <td colSpan={7} className="px-4 py-12 text-center text-gray-500">
+                                    <td colSpan={8} className="px-4 py-12 text-center text-gray-500">
                                         No leads found. Add contacts to leads from the Contacts page.
                                     </td>
                                 </tr>
@@ -306,6 +363,16 @@ export default function LeadsPage() {
                                             idx % 2 === 0 ? "bg-white" : "bg-gray-50/30"
                                         )}
                                     >
+                                        {/* Checkbox */}
+                                        <td className="px-4 py-3">
+                                            <input
+                                                type="checkbox"
+                                                checked={selectedLeads.includes(lead.id)}
+                                                onChange={() => handleSelectLead(lead.id)}
+                                                className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                                            />
+                                        </td>
+
                                         {/* Name */}
                                         <td className="px-4 py-3">
                                             <div className="flex items-center gap-3">
@@ -375,13 +442,22 @@ export default function LeadsPage() {
 
                                         {/* Actions */}
                                         <td className="px-4 py-3 text-right">
-                                            <button
-                                                onClick={() => router.push(`/sales/contacts/${lead.contact_id}`)}
-                                                className="px-3 py-1.5 text-xs font-medium text-white bg-gradient-to-r from-pink-500 to-orange-400 rounded-md hover:opacity-90 transition flex items-center gap-1.5 ml-auto"
-                                            >
-                                                <Eye className="h-3 w-3" />
-                                                View
-                                            </button>
+                                            <div className="flex items-center gap-2 justify-end">
+                                                <button
+                                                    onClick={() => setAssignModalLeadId(lead.id)}
+                                                    className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-md transition"
+                                                    title="Assign to User"
+                                                >
+                                                    <UserPlus className="h-4 w-4" />
+                                                </button>
+                                                <button
+                                                    onClick={() => router.push(`/sales/contacts/${lead.contact_id}`)}
+                                                    className="px-3 py-1.5 text-xs font-medium text-white bg-gradient-to-r from-pink-500 to-orange-400 rounded-md hover:opacity-90 transition flex items-center gap-1.5"
+                                                >
+                                                    <Eye className="h-3 w-3" />
+                                                    View
+                                                </button>
+                                            </div>
                                         </td>
                                     </tr>
                                 ))
@@ -389,6 +465,56 @@ export default function LeadsPage() {
                         </tbody>
                     </table>
                 </div>
+
+                {/* Delete Confirmation Modal */}
+                {showDeleteConfirm && (
+                    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+                        <div className="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4">
+                            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                                Delete {selectedLeads.length} Lead{selectedLeads.length > 1 ? 's' : ''}?
+                            </h3>
+                            <p className="text-sm text-gray-600 mb-6">
+                                This action cannot be undone. The {selectedLeads.length > 1 ? 'leads' : 'lead'} will be permanently deleted.
+                            </p>
+                            <div className="flex gap-3 justify-end">
+                                <button
+                                    onClick={() => setShowDeleteConfirm(false)}
+                                    disabled={isDeleting}
+                                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={handleDeleteLeads}
+                                    disabled={isDeleting}
+                                    className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition flex items-center gap-2"
+                                >
+                                    {isDeleting ? (
+                                        <>
+                                            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                            Deleting...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Trash2 className="h-4 w-4" />
+                                            Delete
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Assign Lead Modal */}
+                <AssignLeadModal
+                    isOpen={!!assignModalLeadId}
+                    leadId={assignModalLeadId || ""}
+                    onClose={() => setAssignModalLeadId(null)}
+                    onSuccess={() => {
+                        fetchLeads(); // Refresh list to maybe show new owner if we displayed it
+                    }}
+                />
             </div>
         </div>
     );

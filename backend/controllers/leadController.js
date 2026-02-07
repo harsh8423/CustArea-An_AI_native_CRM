@@ -129,7 +129,7 @@ exports.createLeadsFromContacts = async (req, res) => {
     try {
         const { contactIds } = req.body;
         const tenantId = req.user.tenantId;
-        const userId = req.user.userId;
+        const userId = req.user.id;  // FIXED: Use .id not .userId
 
         if (!contactIds || !Array.isArray(contactIds) || contactIds.length === 0) {
             return res.status(400).json({ error: 'No contact IDs provided' });
@@ -164,10 +164,10 @@ exports.createLeadsFromContacts = async (req, res) => {
                 continue; // Skip if lead already exists
             }
 
-            // Create lead
+            // Create lead - FIXED: Both created_by and owner_id use userId
             const result = await client.query(
-                `INSERT INTO leads (tenant_id, contact_id, pipeline_id, stage_id, status, created_by)
-                 VALUES ($1, $2, $3, $4, 'open', $5) RETURNING *`,
+                `INSERT INTO leads (tenant_id, contact_id, pipeline_id, stage_id, status, created_by, owner_id)
+                 VALUES ($1, $2, $3, $4, 'open', $5, $5) RETURNING *`,
                 [tenantId, contactId, pipeline.id, firstStageId, userId]
             );
 
@@ -196,10 +196,11 @@ exports.updateLeadStage = async (req, res) => {
         const { id } = req.params;
         const { stageId } = req.body;
         const tenantId = req.user.tenantId;
+        const userId = req.user.id;  // FIXED: Extract user ID
 
         const result = await pool.query(
-            `UPDATE leads SET stage_id = $1, last_activity_at = now() WHERE id = $2 AND tenant_id = $3 RETURNING *`,
-            [stageId, id, tenantId]
+            `UPDATE leads SET stage_id = $1, last_activity_at = now(), updated_by = $2 WHERE id = $3 AND tenant_id = $4 RETURNING *`,
+            [stageId, userId, id, tenantId]  // FIXED: Added userId
         );
 
         if (result.rows.length === 0) {
@@ -219,14 +220,15 @@ exports.updateLeadStatus = async (req, res) => {
         const { id } = req.params;
         const { status } = req.body;
         const tenantId = req.user.tenantId;
+        const userId = req.user.id;  // FIXED: Extract user ID
 
         if (!['open', 'won', 'lost', 'disqualified'].includes(status)) {
             return res.status(400).json({ error: 'Invalid status' });
         }
 
         const result = await pool.query(
-            `UPDATE leads SET status = $1, last_activity_at = now() WHERE id = $2 AND tenant_id = $3 RETURNING *`,
-            [status, id, tenantId]
+            `UPDATE leads SET status = $1, last_activity_at = now(), updated_by = $2 WHERE id = $3 AND tenant_id = $4 RETURNING *`,
+            [status, userId, id, tenantId]  // FIXED: Added userId
         );
 
         if (result.rows.length === 0) {
@@ -246,14 +248,15 @@ exports.updateLeadScore = async (req, res) => {
         const { id } = req.params;
         const { score } = req.body;
         const tenantId = req.user.tenantId;
+        const userId = req.user.id;  // FIXED: Extract user ID
 
         if (score === undefined || score < 0 || score > 5) {
             return res.status(400).json({ error: 'Score must be between 0 and 5' });
         }
 
         const result = await pool.query(
-            `UPDATE leads SET score = $1, last_activity_at = now() WHERE id = $2 AND tenant_id = $3 RETURNING *`,
-            [parseInt(score), id, tenantId]
+            `UPDATE leads SET score = $1, last_activity_at = now(), updated_by = $2 WHERE id = $3 AND tenant_id = $4 RETURNING *`,
+            [parseInt(score), userId, id, tenantId]  // FIXED: Added userId
         );
 
         if (result.rows.length === 0) {
@@ -266,3 +269,85 @@ exports.updateLeadScore = async (req, res) => {
         res.status(500).json({ error: 'Failed to update lead score' });
     }
 };
+
+// =====================================================
+// DELETE LEADS (Bulk)
+// =====================================================
+exports.deleteLeads = async (req, res) => {
+    try {
+        const { ids } = req.body; // Array of lead IDs
+        const tenantId = req.user.tenantId;
+
+        if (!ids || !Array.isArray(ids) || ids.length === 0) {
+            return res.status(400).json({ error: 'No IDs provided' });
+        }
+
+        // Delete only leads belonging to this tenant
+        const result = await pool.query(
+            `DELETE FROM leads WHERE id = ANY($1::uuid[]) AND tenant_id = $2 RETURNING id`,
+            [ids, tenantId]
+        );
+
+        res.json({ 
+            success: true,
+            deleted: result.rowCount, 
+            ids: result.rows.map(r => r.id) 
+        });
+    } catch (err) {
+        console.error('Error deleting leads:', err);
+        res.status(500).json({ error: 'Failed to delete leads' });
+    }
+};
+
+// =====================================================
+// ASSIGN LEAD TO USER
+// =====================================================
+exports.assignLead = async (req, res) => {
+    try {
+        const { id } = req.params; // leadId
+        const { userId: assignedToUserId } = req.body; // user to assign TO
+        const tenantId = req.user.tenantId;
+        const assignedByUserId = req.user.id;
+
+        if (!assignedToUserId) {
+            return res.status(400).json({ error: 'Target user ID is required' });
+        }
+
+        // Verify lead exists and belongs to tenant
+        const leadCheck = await pool.query(
+            `SELECT id, contact_id FROM leads WHERE id = $1 AND tenant_id = $2`,
+            [id, tenantId]
+        );
+
+        if (leadCheck.rows.length === 0) {
+            return res.status(404).json({ error: 'Lead not found' });
+        }
+
+        // Insert assignment
+        // Using ON CONFLICT DO NOTHING assuming we just want to ensure access exists
+        // If we want to track "re-assignment" (update assigned_by), we could DO UPDATE
+        await pool.query(
+            `INSERT INTO user_lead_assignments (user_id, lead_id, assigned_by, assigned_at)
+             VALUES ($1, $2, $3, NOW())
+             ON CONFLICT (user_id, lead_id) 
+             DO UPDATE SET assigned_by = $3, assigned_at = NOW()`,
+            [assignedToUserId, id, assignedByUserId]
+        );
+        
+        // Also update owner_id on leads table for primary ownership? 
+        // User asked for "assign lead to other user", usually implies ownership transfer.
+        // I will update owner_id as well to keep it consistent.
+        await pool.query(
+            `UPDATE leads SET owner_id = $1, updated_by = $2, last_activity_at = NOW() 
+             WHERE id = $3 AND tenant_id = $4`,
+            [assignedToUserId, assignedByUserId, id, tenantId]
+        );
+
+        res.json({ success: true, message: 'Lead assigned successfully' });
+
+    } catch (err) {
+        console.error('Error assigning lead:', err);
+        res.status(500).json({ error: 'Failed to assign lead' });
+    }
+};
+

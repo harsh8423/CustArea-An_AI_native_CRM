@@ -13,7 +13,7 @@ const { pool } = require('../../config/db');
 async function createCampaign(req, res) {
     try {
         const tenantId = req.user.tenantId;
-        const userId = req.user.userId;
+        const userId = req.user.id; // FIXED: auth middleware provides req.user.id not req.user.userId
 
         const result = await campaignService.createCampaign(tenantId, userId, req.body);
         
@@ -499,6 +499,60 @@ async function getCampaignContacts(req, res) {
     }
 }
 
+/**
+ * POST /api/campaigns/preview/templates - Generate templates from form data WITHOUT creating campaign
+ */
+async function generateTemplatesPreview(req, res) {
+    try {
+        const { campaignData, followUpCount = 2 } = req.body;
+
+        // Validate required fields
+        if (!campaignData.company_name || !campaignData.campaign_objective || 
+            !campaignData.selling_points || !campaignData.pain_points || 
+            !campaignData.value_proposition) {
+            return res.status(400).json({ error: 'Missing required campaign data fields' });
+        }
+
+        // Create a temporary campaign object for template generation (NOT saved to DB)
+        const tempCampaignData = {
+            name: campaignData.name || 'Preview Campaign',
+            company_name: campaignData.company_name,
+            website_url: campaignData.website_url,
+            campaign_objective: campaignData.campaign_objective,
+            selling_points: campaignData.selling_points,
+            pain_points: campaignData.pain_points,
+            value_proposition: campaignData.value_proposition,
+            proof_points: campaignData.proof_points,
+            language: campaignData.language || 'en',
+            ai_instructions: campaignData.ai_instructions
+        };
+
+        // Generate templates using AI (no DB interaction)
+        const templatesResult = await templateService.generateCampaignTemplates(tempCampaignData, followUpCount);
+        
+        // Convert to array format and add IDs + wait periods for frontend tracking
+        const templatesArray = [
+            { ...templatesResult.initial, id: `temp-initial-${Date.now()}` },
+            ...templatesResult.followUps.map((t, i) => ({ 
+                ...t, 
+                id: `temp-followup-${i}-${Date.now()}`,
+                wait_period_value: 3,
+                wait_period_unit: 'days'
+            }))
+        ];
+
+        res.json({
+            success: true,
+            message: 'Templates generated successfully',
+            templates: templatesArray
+        });
+
+    } catch (error) {
+        console.error('Generate templates preview error:', error);
+        res.status(500).json({ error: error.message });
+    }
+}
+
 module.exports = {
     createCampaign,
     getCampaigns,
@@ -509,6 +563,7 @@ module.exports = {
     pauseCampaign,
     resumeCampaign,
     generateTemplates,
+    generateTemplatesPreview,
     getTemplates,
     createTemplate,
     updateTemplate,

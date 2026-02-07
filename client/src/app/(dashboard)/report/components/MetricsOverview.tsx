@@ -23,13 +23,17 @@ interface MetricsOverviewProps {
             calls_by_human: number;
             calls_duration_seconds: number;
             campaigns_created: number;
+            campaign_emails_sent: number;
             leads_created: number;
             contacts_created: number;
             tickets_created: number;
             tickets_resolved: number;
+            campaign_emails_sent_by_ai?: number;
+            campaign_emails_sent_by_human?: number;
         };
     } | null;
     loading: boolean;
+    category?: string;
 }
 
 interface MetricCardProps {
@@ -75,7 +79,7 @@ function MetricCard({ title, value, subtitle, icon, trend }: MetricCardProps) {
     );
 }
 
-export default function MetricsOverview({ metrics, loading }: MetricsOverviewProps) {
+export default function MetricsOverview({ metrics, loading, category = 'all' }: MetricsOverviewProps) {
     if (loading) {
         return (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
@@ -109,60 +113,86 @@ export default function MetricsOverview({ metrics, loading }: MetricsOverviewPro
     return (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
             {/* Email Metrics */}
-            <MetricCard
-                title="Total Emails Sent"
-                value={totals.emails_sent_total}
-                subtitle={`AI: ${totals.emails_sent_by_ai} | Human: ${totals.emails_sent_by_human}`}
-                icon={<Mail className="w-6 h-6 text-blue-600" />}
-            />
+            {(category === 'all' || category === 'email') && (
+                <>
+                    <MetricCard
+                        title="Total Emails Sent"
+                        value={totals.emails_sent_total}
+                        subtitle={`AI: ${totals.emails_sent_by_ai} | Human: ${totals.emails_sent_by_human}`}
+                        icon={<Mail className="w-6 h-6 text-blue-600" />}
+                    />
 
-            <MetricCard
-                title="Emails Received"
-                value={totals.emails_received}
-                icon={<MessageSquare className="w-6 h-6 text-green-600" />}
-            />
+                    <MetricCard
+                        title="Emails Received"
+                        value={totals.emails_received}
+                        icon={<MessageSquare className="w-6 h-6 text-green-600" />}
+                    />
+                </>
+            )}
 
             {/* Phone Metrics */}
-            <MetricCard
-                title="Total Calls"
-                value={totals.calls_total}
-                subtitle={`AI: ${totals.calls_by_ai} | Human: ${totals.calls_by_human}`}
-                icon={<Phone className="w-6 h-6 text-purple-600" />}
-            />
+            {(category === 'all' || category === 'phone') && (
+                <>
+                    <MetricCard
+                        title="Total Calls"
+                        value={totals.calls_total}
+                        subtitle={`AI: ${totals.calls_by_ai} | Human: ${totals.calls_by_human}`}
+                        icon={<Phone className="w-6 h-6 text-purple-600" />}
+                    />
 
-            <MetricCard
-                title="Call Duration"
-                value={formatDuration(totals.calls_duration_seconds)}
-                icon={<Phone className="w-6 h-6 text-indigo-600" />}
-            />
+                    <MetricCard
+                        title="Call Duration"
+                        value={formatDuration(totals.calls_duration_seconds)}
+                        icon={<Phone className="w-6 h-6 text-indigo-600" />}
+                    />
+                </>
+            )}
 
-            {/* CRM Metrics */}
-            <MetricCard
-                title="Leads Created"
-                value={totals.leads_created}
-                icon={<Target className="w-6 h-6 text-orange-600" />}
-            />
+            {/* Lead Metrics */}
+            {(category === 'all' || category === 'lead') && (
+                <MetricCard
+                    title="Leads Created"
+                    value={totals.leads_created}
+                    icon={<Target className="w-6 h-6 text-orange-600" />}
+                />
+            )}
 
-            <MetricCard
-                title="Contacts Created"
-                value={totals.contacts_created}
-                icon={<Users className="w-6 h-6 text-teal-600" />}
-            />
+            {/* Contact Metrics */}
+            {(category === 'all' || category === 'contact') && (
+                <MetricCard
+                    title="Contacts Created"
+                    value={totals.contacts_created}
+                    icon={<Users className="w-6 h-6 text-teal-600" />}
+                />
+            )}
 
             {/* Campaign Metrics */}
-            <MetricCard
-                title="Campaigns Created"
-                value={totals.campaigns_created}
-                icon={<TrendingUp className="w-6 h-6 text-pink-600" />}
-            />
+            {(category === 'all' || category === 'campaign') && (
+                <>
+                    <MetricCard
+                        title="Campaigns Created"
+                        value={totals.campaigns_created}
+                        icon={<TrendingUp className="w-6 h-6 text-pink-600" />}
+                    />
+
+                    <MetricCard
+                        title="Campaign Emails Sent"
+                        value={totals.campaign_emails_sent || 0}
+                        subtitle={`AI: ${totals.campaign_emails_sent_by_ai || 0} | Human: ${totals.campaign_emails_sent_by_human || 0}`}
+                        icon={<Mail className="w-6 h-6 text-indigo-600" />}
+                    />
+                </>
+            )}
 
             {/* Ticket Metrics */}
-            <MetricCard
-                title="Tickets Resolved"
-                value={totals.tickets_resolved}
-                subtitle={`Total Created: ${totals.tickets_created}`}
-                icon={<Ticket className="w-6 h-6 text-yellow-600" />}
-            />
+            {(category === 'all' || category === 'ticket') && (
+                <MetricCard
+                    title="Tickets Resolved"
+                    value={totals.tickets_resolved}
+                    subtitle={`Total Created: ${totals.tickets_created}`}
+                    icon={<Ticket className="w-6 h-6 text-yellow-600" />}
+                />
+            )}
         </div>
     );
 }

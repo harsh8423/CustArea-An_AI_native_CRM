@@ -172,6 +172,7 @@ async function sendFollowUpEmail(campaignId, tenantId, contact, allFollowUpTempl
     await client.query(
         `UPDATE campaign_contacts 
          SET current_follow_up_step = current_follow_up_step + 1,
+             emails_sent = emails_sent + 1,
              next_send_at = $2,
              last_sent_at = now(),
              status = 'sent',

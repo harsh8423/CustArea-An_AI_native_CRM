@@ -117,12 +117,16 @@ async function persistCallToDatabase(session) {
         }
 
         // 2. CREATE PHONE_CALLS RECORD (main call metadata)
+        const aiConfig = session.aiConfig || {};
+        
         const phoneCallResult = await client.query(`
             INSERT INTO phone_calls (
                 tenant_id, conversation_id, call_sid, direction,
                 from_number, to_number, status, duration_seconds,
-                started_at, ended_at, method, custom_instruction
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+                started_at, ended_at, method, custom_instruction,
+                user_id, ai_voice_id, ai_model, ai_provider, 
+                stt_provider, tts_provider, latency_mode
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
             RETURNING id
         `, [
             session.tenantId,
@@ -136,7 +140,14 @@ async function persistCallToDatabase(session) {
             session.startTime ? new Date(session.startTime) : new Date(),
             new Date(),
             session.method || 'realtime',  // Default to 'realtime' if not set
-            session.customInstruction || null  // Save custom instruction
+            session.customInstruction || null,  // Save custom instruction
+            session.userId || null,
+            aiConfig.ai_voice_id || null,
+            aiConfig.ai_model || null,
+            aiConfig.ai_provider || null,
+            aiConfig.stt_provider || null,
+            aiConfig.tts_provider || null,
+            aiConfig.latency_mode || null
         ]);
 
         const phoneCallId = phoneCallResult.rows[0].id;

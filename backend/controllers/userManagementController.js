@@ -105,15 +105,19 @@ exports.getUserDetails = async (req, res) => {
         // Get outbound email access
         const outboundEmailsResult = await pool.query(`
             SELECT 
-                uoea.id,
+                COALESCE(uoea.email_connection_id, uoea.allowed_from_email_id) as id,
                 uoea.email_type,
                 COALESCE(tec.email_address, tafe.email_address) as email_address,
-                tec.display_name
+                tec.display_name,
+                uoea.email_connection_id,
+                uoea.allowed_from_email_id
             FROM user_outbound_email_access uoea
             LEFT JOIN tenant_email_connections tec ON tec.id = uoea.email_connection_id
             LEFT JOIN tenant_allowed_from_emails tafe ON tafe.id = uoea.allowed_from_email_id
             WHERE uoea.user_id = $1
         `, [id]);
+        
+        console.log('User outbound emails:', outboundEmailsResult.rows);
 
         // Get phone access
         const phoneResult = await pool.query(`
@@ -504,9 +508,10 @@ exports.assignLeads = async (req, res) => {
             `, [id, leadId, assignedBy]);
 
             // Also update lead owner_id for backward compatibility
+            // FIXED: Set updated_by to track who assigned
             await pool.query(`
-                UPDATE leads SET owner_id = $1 WHERE id = $2
-            `, [id, leadId]);
+                UPDATE leads SET owner_id = $1, updated_by = $3 WHERE id = $2
+            `, [id, leadId, assignedBy]);
         }
 
         res.json({ message: 'Leads assigned successfully', count: leadIds.length });
@@ -517,9 +522,13 @@ exports.assignLeads = async (req, res) => {
 };
 
 /**
- * POST /api/users/:id/grant-channel-access - Grant channel access
+ * POST /api/users/:id/grant-channel-access - Grant/Revoke channel access
+ * This endpoint now supports both granting and revoking access.
+ * It deletes all existing access and re-inserts only the selected items.
  */
 exports.grantChannelAccess = async (req, res) => {
+    const client = await pool.connect();
+    
     try {
         const { id } = req.params;
         const { 
@@ -532,28 +541,52 @@ exports.grantChannelAccess = async (req, res) => {
         const tenantId = req.user.tenantId;
         const grantedBy = req.user.id;
 
+        await client.query('BEGIN');
+
         // Verify user belongs to tenant
-        const userCheck = await pool.query(
+        const userCheck = await client.query(
             `SELECT id FROM users WHERE id = $1 AND tenant_id = $2`,
             [id, tenantId]
         );
 
         if (userCheck.rows.length === 0) {
+            await client.query('ROLLBACK');
             return res.status(404).json({ error: 'User not found' });
         }
 
-        // Grant inbound email access
+        // STEP 1: Delete all existing channel access for this user
+        // This ensures we only have the selected items after this operation
+        await client.query(`DELETE FROM user_inbound_email_access WHERE user_id = $1`, [id]);
+        await client.query(`DELETE FROM user_outbound_email_access WHERE user_id = $1`, [id]);
+        await client.query(`DELETE FROM user_phone_access WHERE user_id = $1`, [id]);
+        await client.query(`DELETE FROM user_whatsapp_access WHERE user_id = $1`, [id]);
+
+        // STEP 2: Insert selected inbound email access
         for (const inboundEmailId of inboundEmailIds) {
-            await pool.query(`
+            await client.query(`
                 INSERT INTO user_inbound_email_access (user_id, allowed_inbound_email_id, granted_by)
                 VALUES ($1, $2, $3)
-                ON CONFLICT (user_id, allowed_inbound_email_id) DO NOTHING
             `, [id, inboundEmailId, grantedBy]);
         }
 
-        // Grant outbound email access
-        for (const config of outboundEmailConfigs) {
-            await pool.query(`
+        // STEP 3: Insert selected outbound email access
+        // Deduplicate configs to avoid unique constraint violations
+        const seenConfigs = new Set();
+        const uniqueOutboundConfigs = outboundEmailConfigs.filter(config => {
+            // Create a unique key based on the actual database unique constraints
+            const keyConnection = config.email_connection_id ? `conn_${config.email_connection_id}` : null;
+            const keyAllowedEmail = config.allowed_from_email_id ? `email_${config.allowed_from_email_id}` : null;
+            const uniqueKey = keyConnection || keyAllowedEmail;
+            
+            if (!uniqueKey || seenConfigs.has(uniqueKey)) {
+                return false; // Skip duplicates
+            }
+            seenConfigs.add(uniqueKey);
+            return true;
+        });
+
+        for (const config of uniqueOutboundConfigs) {
+            await client.query(`
                 INSERT INTO user_outbound_email_access (
                     user_id, email_type, email_connection_id, 
                     ses_identity_id, allowed_from_email_id, granted_by
@@ -568,30 +601,47 @@ exports.grantChannelAccess = async (req, res) => {
             ]);
         }
 
-        // Grant phone access
+        // STEP 4: Insert selected phone access
         for (const phoneConfigId of phoneConfigIds) {
-            await pool.query(`
+            await client.query(`
                 INSERT INTO user_phone_access (user_id, phone_config_id, granted_by)
                 VALUES ($1, $2, $3)
-                ON CONFLICT (user_id, phone_config_id) DO NOTHING
             `, [id, phoneConfigId, grantedBy]);
         }
 
-        // Grant WhatsApp access
+        // STEP 5: Insert selected WhatsApp access
         for (const whatsappAccountId of whatsappAccountIds) {
-            await pool.query(`
+            await client.query(`
                 INSERT INTO user_whatsapp_access (user_id, whatsapp_account_id, granted_by)
                 VALUES ($1, $2, $3)
-                ON CONFLICT (user_id, whatsapp_account_id) DO NOTHING
             `, [id, whatsappAccountId, grantedBy]);
         }
 
-        res.json({ message: 'Channel access granted successfully' });
+        await client.query('COMMIT');
+
+        // Log deduplication info
+        if (outboundEmailConfigs.length !== uniqueOutboundConfigs.length) {
+            console.log(`Deduplicated outbound emails: ${outboundEmailConfigs.length} -> ${uniqueOutboundConfigs.length}`);
+        }
+
+        res.json({ 
+            message: 'Channel access updated successfully',
+            granted: {
+                inbound_emails: inboundEmailIds.length,
+                outbound_emails: uniqueOutboundConfigs.length,
+                phones: phoneConfigIds.length,
+                whatsapp: whatsappAccountIds.length
+            }
+        });
     } catch (err) {
+        await client.query('ROLLBACK');
         console.error('Grant channel access error:', err);
-        res.status(500).json({ error: 'Failed to grant channel access', details: err.message });
+        res.status(500).json({ error: 'Failed to update channel access', details: err.message });
+    } finally {
+        client.release();
     }
 };
+
 
 /**
  * PUT /api/users/:id - Update user details
@@ -771,13 +821,17 @@ exports.getUserDetails = async (req, res) => {
         // Get outbound email access
         const outboundEmailsResult = await pool.query(`
             SELECT 
-                uoea.id,
+                COALESCE(uoea.email_connection_id, uoea.allowed_from_email_id) as id,
                 uoea.email_type,
+                uoea.email_connection_id,
+                uoea.ses_identity_id,
+                uoea.allowed_from_email_id,
                 COALESCE(tec.email_address, tafe.email_address) as email_address,
-                tec.display_name
+                COALESCE(tec.display_name, ep.provider_type) as provider
             FROM user_outbound_email_access uoea
             LEFT JOIN tenant_email_connections tec ON tec.id = uoea.email_connection_id
             LEFT JOIN tenant_allowed_from_emails tafe ON tafe.id = uoea.allowed_from_email_id
+            LEFT JOIN email_providers ep ON ep.id = tec.provider_id
             WHERE uoea.user_id = $1
         `, [id]);
 
@@ -1005,92 +1059,16 @@ exports.assignLeads = async (req, res) => {
             `, [id, leadId, assignedBy]);
 
             // Also update lead owner_id for backward compatibility
+            // FIXED: Set updated_by to track who assigned
             await pool.query(`
-                UPDATE leads SET owner_id = $1 WHERE id = $2
-            `, [id, leadId]);
+                UPDATE leads SET owner_id = $1, updated_by = $3 WHERE id = $2
+            `, [id, leadId, assignedBy]);
         }
 
         res.json({ message: 'Leads assigned successfully', count: leadIds.length });
     } catch (err) {
         console.error('Assign leads error:', err);
         res.status(500).json({ error: 'Failed to assign leads', details: err.message });
-    }
-};
-
-/**
- * POST /api/users/:id/grant-channel-access - Grant channel access
- */
-exports.grantChannelAccess = async (req, res) => {
-    try {
-        const { id } = req.params;
-        const { 
-            inboundEmailIds = [],
-            outboundEmailConfigs = [], // [{ email_type, email_connection_id OR ses_identity_id + allowed_from_email_id }]
-            phoneConfigIds = [],
-            whatsappAccountIds = []
-        } = req.body;
-        
-        const tenantId = req.user.tenantId;
-        const grantedBy = req.user.id;
-
-        // Verify user belongs to tenant
-        const userCheck = await pool.query(
-            `SELECT id FROM users WHERE id = $1 AND tenant_id = $2`,
-            [id, tenantId]
-        );
-
-        if (userCheck.rows.length === 0) {
-            return res.status(404).json({ error: 'User not found' });
-        }
-
-        // Grant inbound email access
-        for (const inboundEmailId of inboundEmailIds) {
-            await pool.query(`
-                INSERT INTO user_inbound_email_access (user_id, allowed_inbound_email_id, granted_by)
-                VALUES ($1, $2, $3)
-                ON CONFLICT (user_id, allowed_inbound_email_id) DO NOTHING
-            `, [id, inboundEmailId, grantedBy]);
-        }
-
-        // Grant outbound email access
-        for (const config of outboundEmailConfigs) {
-            await pool.query(`
-                INSERT INTO user_outbound_email_access (
-                    user_id, email_type, email_connection_id, 
-                    ses_identity_id, allowed_from_email_id, granted_by
-                ) VALUES ($1, $2, $3, $4, $5, $6)
-            `, [
-                id,
-                config.email_type,
-                config.email_connection_id || null,
-                config.ses_identity_id || null,
-                config.allowed_from_email_id || null,
-                grantedBy
-            ]);
-        }
-
-        // Grant phone access
-        for (const phoneConfigId of phoneConfigIds) {
-            await pool.query(`
-                INSERT INTO user_phone_access (user_id, phone_config_id, granted_by)
-                VALUES ($1, $2, $3)
-                ON CONFLICT (user_id, phone_config_id) DO NOTHING
-            `, [id, phoneConfigId, grantedBy]);
-        }
-
-        // Grant WhatsApp access
-        for (const whatsappAccountId of whatsappAccountIds) {
-            await pool.query(`
-                INSERT INTO user_whatsapp_access (user_id, whatsapp_account_id, granted_by)
-                VALUES ($1, $2, $3)
-                ON CONFLICT (user_id, whatsapp_account_id) DO NOTHING
-            `, [id, whatsappAccountId, grantedBy]);
-        }
-
-        res.json({ message: 'Channel access granted successfully' });
-    } catch (err) {
-        console.error('Grant channel access error:', err);
-        res.status(500).json({ error: 'Failed to grant channel access', details: err.message });
     }
 };
 

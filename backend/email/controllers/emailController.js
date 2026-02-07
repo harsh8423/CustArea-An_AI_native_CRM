@@ -201,9 +201,256 @@ exports.setDefaultConnection = async (req, res) => {
     }
 };
 
-// ===== SES IDENTITIES =====
+// ===== SES IDENTITIES WITH OWNERSHIP VERIFICATION =====
 
-// POST /api/email/identities/domain - Create domain identity
+// POST /api/email/identities/claim-domain - Step 1: Claim domain with DNS verification
+exports.claimDomain = async (req, res) => {
+    const tenantId = req.user.tenantId;
+    const { domain } = req.body;
+    
+    if (!domain || !domain.trim()) {
+        return res.status(400).json({ error: 'Domain is required' });
+    }
+    
+    const cleanDomain = domain.trim().toLowerCase();
+    
+    // Basic domain format validation
+    const domainRegex = /^([a-z0-9]+(-[a-z0-9]+)*\.)+[a-z]{2,}$/;
+    if (!domainRegex.test(cleanDomain)) {
+        return res.status(400).json({ 
+            error: 'Invalid domain format',
+            message: 'Please enter a valid domain name (e.g., example.com)'
+        });
+    }
+    
+    try {
+        // Check if domain already owned by another tenant
+        const existingOwner = await pool.query(`
+            SELECT tenant_id, t.name as tenant_name, ownership_verified_at
+            FROM tenant_ses_identities tsi
+            JOIN tenants t ON tsi.tenant_id = t.id
+            WHERE identity_value = $1 
+            AND identity_type = 'domain'
+            AND ownership_verified_at IS NOT NULL
+        `, [cleanDomain]);
+        
+        if (existingOwner.rows.length > 0) {
+            const owner = existingOwner.rows[0];
+            if (owner.tenant_id !== tenantId) {
+                return res.status(409).json({ 
+                    error: 'Domain already verified by another organization',
+                    message: 'This domain has been verified by another account. If you own this domain, please contact support.',
+                    domain: cleanDomain
+                });
+            } else {
+                return res.status(200).json({
+                    message: 'Domain already verified by your organization',
+                    domain: cleanDomain,
+                    verifiedAt: owner.ownership_verified_at,
+                    alreadyOwned: true
+                 });
+            }
+        }
+        
+        // Generate unique verification token
+        const crypto = require('crypto');
+        const verificationToken = crypto.randomUUID();
+        const txtRecordName = `_custarea-verify.${cleanDomain}`;
+        const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+        
+        // Store verification challenge
+        const result = await pool.query(`
+            INSERT INTO domain_ownership_verifications (
+                tenant_id, domain, verification_token, verification_method,
+                verification_status, dns_record_name, dns_record_expected_value, expires_at
+            ) VALUES ($1, $2, $3, 'dns_txt', 'pending', $4, $5, $6)
+            ON CONFLICT (tenant_id, domain) 
+            DO UPDATE SET
+                verification_token = EXCLUDED.verification_token,
+                dns_record_name = EXCLUDED.dns_record_name,
+                dns_record_expected_value = EXCLUDED.dns_record_expected_value,
+                expires_at = EXCLUDED.expires_at,
+                verification_status = 'pending',
+                created_at = now()
+            RETURNING *
+        `, [tenantId, cleanDomain, verificationToken, txtRecordName, verificationToken, expiresAt]);
+        
+        res.json({
+            domain: cleanDomain,
+            verificationMethod: 'dns_txt',
+            verificationToken,
+            dnsRecord: {
+                type: 'TXT',
+                name: txtRecordName,
+                value: verificationToken,
+                ttl: '300 (or default)'
+            },
+            instructions: [
+                `1. Add a TXT record to your DNS configuration:`,
+                `   - Name: ${txtRecordName}`,
+                `   - Value: ${verificationToken}`,
+                `   - TTL: 300 seconds (or leave as default)`,
+                `2. Wait for DNS propagation (usually 5-15 minutes)`,
+                `3. Click "Verify Ownership" to complete verification`
+            ],
+            expiresAt
+        });
+    } catch (err) {
+        console.error('Error claiming domain:', err);
+        return res.status(500).json({ 
+            error: 'Failed to initiate domain claim', 
+            details: err.message 
+        });
+    }
+};
+
+// POST /api/email/identities/verify-ownership - Step 2: Verify DNS ownership
+exports.verifyDomainOwnership = async (req, res) => {
+    const tenantId = req.user.tenantId;
+    const { domain } = req.body;
+    
+    if (!domain) {
+        return res.status(400).json({ error: 'Domain is required' });
+    }
+    
+    const cleanDomain = domain.trim().toLowerCase();
+    
+    try {
+        // Get pending verification
+        const verificationRes = await pool.query(`
+            SELECT * FROM domain_ownership_verifications
+            WHERE tenant_id = $1 
+            AND domain = $2 
+            AND verification_status = 'pending'
+            AND expires_at > now()
+            ORDER BY created_at DESC
+            LIMIT 1
+        `, [tenantId, cleanDomain]);
+        
+        if (verificationRes.rows.length === 0) {
+            return res.status(404).json({ 
+                error: 'No active verification found',
+                message: 'Verification not found or has expired. Please start the domain claim process again.'
+            });
+        }
+        
+        const verification = verificationRes.rows[0];
+        
+        // Perform DNS TXT lookup
+        const dns = require('dns').promises;
+        
+        try {
+            const txtRecords = await dns.resolveTxt(verification.dns_record_name);
+            const flatRecords = txtRecords.flat();
+            const foundToken = flatRecords.find(record => 
+                record.trim() === verification.verification_token
+            );
+            
+            if (!foundToken) {
+                // Update attempt count
+                await pool.query(`
+                    UPDATE domain_ownership_verifications
+                    SET verification_attempts = verification_attempts + 1,
+                        dns_record_found_value = $1,
+                        error_message = $2,
+                        updated_at = now()
+                    WHERE id = $3
+                `, [
+                    JSON.stringify(flatRecords),
+                    'DNS TXT record not found or value does not match',
+                    verification.id
+                ]);
+                
+                return res.status(400).json({ 
+                    error: 'Verification failed',
+                    message: 'DNS TXT record not found or value does not match. Please ensure the record is correctly added and DNS has propagated.',
+                    expected: {
+                        name: verification.dns_record_name,
+                        value: verification.verification_token
+                    },
+                    found: flatRecords.length > 0 ? flatRecords : 'No TXT records found',
+                    hint: 'DNS propagation can take 5-60 minutes. Try again in a few minutes.'
+                });
+            }
+            
+            // SUCCESS - Mark ownership as verified
+            const client = await pool.connect();
+            try {
+                await client.query('BEGIN');
+                
+                // Update verification record
+                await client.query(`
+                    UPDATE domain_ownership_verifications
+                    SET verification_status = 'verified',
+                        verified_at = now(),
+                        dns_record_found_value = $1,
+                        updated_at = now()
+                    WHERE id = $2
+                `, [foundToken, verification.id]);
+                
+                // Create/update the SES identity with ownership proof
+                const identityResult = await client.query(`
+                    INSERT INTO tenant_ses_identities (
+                        tenant_id, identity_type, identity_value,
+                        ownership_verification_token, ownership_verified_at,
+                        ownership_verification_method, verification_status,
+                        claimed_at
+                    ) VALUES ($1, 'domain', $2, $3, now(), 'dns_txt', 'PENDING', now())
+                    ON CONFLICT (tenant_id, identity_type, identity_value)
+                    DO UPDATE SET
+                        ownership_verified_at = now(),
+                        ownership_verification_token = EXCLUDED.ownership_verification_token,
+                        ownership_verification_method = EXCLUDED.ownership_verification_method
+                    RETURNING *
+                `, [tenantId, cleanDomain, verification.verification_token]);
+                
+                await client.query('COMMIT');
+                
+                res.json({
+                    success: true,
+                    message: 'Domain ownership verified successfully!',
+                    domain: cleanDomain,
+                    verifiedAt: new Date(),
+                    identity: identityResult.rows[0],
+                    nextStep: 'Now you can configure DKIM and SPF records to complete email verification'
+                });
+                
+            } catch (err) {
+                await client.query('ROLLBACK');
+                throw err;
+            } finally {
+                client.release();
+            }
+            
+        } catch (dnsError) {
+            // DNS lookup failed
+            await pool.query(`
+                UPDATE domain_ownership_verifications
+                SET verification_attempts = verification_attempts + 1,
+                    error_message = $1,
+                    updated_at = now()
+                WHERE id = $2
+            `, [dnsError.message, verification.id]);
+            
+            return res.status(400).json({ 
+                error: 'DNS lookup failed',
+                message: 'Could not resolve DNS records. Please ensure the TXT record is published and DNS has propagated.',
+                details: dnsError.message,
+                recordName: verification.dns_record_name,
+                hint: 'You can test DNS propagation using: nslookup -type=TXT ' + verification.dns_record_name
+            });
+        }
+        
+    } catch (err) {
+        console.error('Domain ownership verification error:', err);
+        return res.status(500).json({ 
+            error: 'Verification failed', 
+            details: err.message 
+        });
+    }
+};
+
+// POST /api/email/identities/domain - Step 3: Complete SES verification (REQUIRES OWNERSHIP)
 exports.createDomainIdentity = async (req, res) => {
     const tenantId = req.user.tenantId;
     const { domain } = req.body;
@@ -211,19 +458,40 @@ exports.createDomainIdentity = async (req, res) => {
     if (!domain) {
         return res.status(400).json({ error: "domain is required" });
     }
+    
+    const cleanDomain = domain.trim().toLowerCase();
 
     try {
+        // CRITICAL: Verify ownership was proven first
+        const ownershipCheck = await pool.query(`
+            SELECT * FROM tenant_ses_identities
+            WHERE tenant_id = $1 
+            AND identity_value = $2 
+            AND identity_type = 'domain'
+            AND ownership_verified_at IS NOT NULL
+        `, [tenantId, cleanDomain]);
+        
+        if (ownershipCheck.rows.length === 0) {
+            return res.status(403).json({ 
+                error: 'Domain ownership not verified',
+                message: 'You must verify domain ownership before configuring SES. Use the domain claim workflow first.',
+                domain: cleanDomain,
+                nextStep: 'Click "Claim Domain" to start the ownership verification process'
+            });
+        }
+        
+        // Ownership verified - proceed with SES identity creation
         let sesRes;
         let isExisting = false;
         
         try {
-            sesRes = await createDomainIdentity(domain);
+            sesRes = await createDomainIdentity(cleanDomain);
         } catch (sesErr) {
             // Handle AlreadyExistsException - domain already registered in SES
             if (sesErr.name === 'AlreadyExistsException') {
                 isExisting = true;
                 // Fetch existing identity status instead
-                sesRes = await require('../services/sesIdentityService').getIdentity(domain);
+                sesRes = await require('../services/sesIdentityService').getIdentity(cleanDomain);
             } else {
                 throw sesErr;
             }
@@ -238,38 +506,34 @@ exports.createDomainIdentity = async (req, res) => {
         // Build DNS records for the user
         const dkimRecords = dkimTokens.map((token) => ({
             type: "CNAME",
-            name: `${token}._domainkey.${domain}`,
+            name: `${token}._domainkey.${cleanDomain}`,
             value: `${token}.dkim.amazonses.com`,
         }));
 
         const spfRecord = {
             type: "TXT",
-            name: domain,
+            name: cleanDomain,
             value: "v=spf1 include:amazonses.com -all",
         };
 
         const client = await pool.connect();
         try {
             const insertRes = await client.query(
-                `INSERT INTO tenant_ses_identities (
-                    tenant_id, identity_type, identity_value,
-                    verification_status, dkim_status, dkim_tokens, spf_instructions
-                ) VALUES ($1, 'domain', $2, $3, $4, $5, $6)
-                ON CONFLICT (tenant_id, identity_type, identity_value)
-                DO UPDATE SET
-                    verification_status = EXCLUDED.verification_status,
-                    dkim_status = EXCLUDED.dkim_status,
-                    dkim_tokens = EXCLUDED.dkim_tokens,
-                    spf_instructions = EXCLUDED.spf_instructions,
-                    last_checked_at = now()
-                RETURNING *`,
+                `UPDATE tenant_ses_identities 
+                 SET verification_status = $1,
+                     dkim_status = $2,
+                     dkim_tokens = $3,
+                     spf_instructions = $4,
+                     last_checked_at = now()
+                 WHERE tenant_id = $5 AND identity_value = $6 AND identity_type = 'domain'
+                 RETURNING *`,
                 [
-                    tenantId,
-                    domain,
                     verificationStatus,
                     dkimStatus,
                     JSON.stringify(dkimTokens),
                     spfRecord.value,
+                    tenantId,
+                    cleanDomain
                 ]
             );
 
@@ -280,7 +544,7 @@ exports.createDomainIdentity = async (req, res) => {
                     spf: spfRecord,
                 },
                 existing: isExisting,
-                message: isExisting ? "Domain already exists in SES, fetched current status" : "Domain identity created"
+                message: isExisting ? "Domain already exists in SES, fetched current status" : "Domain identity created in SES"
             });
         } finally {
             client.release();
@@ -290,6 +554,7 @@ exports.createDomainIdentity = async (req, res) => {
         return res.status(500).json({ error: "SES identity creation failed", details: err.message });
     }
 };
+
 
 // GET /api/email/identities - List all identities
 exports.getIdentities = async (req, res) => {

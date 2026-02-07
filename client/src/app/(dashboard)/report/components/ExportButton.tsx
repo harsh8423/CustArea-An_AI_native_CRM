@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 interface ExportButtonProps {
     params: {
         userId?: string;
-        timeRange?: 'daily' | 'weekly' | 'monthly';
+        timeRange?: 'daily' | 'weekly' | 'monthly' | 'custom';
         category?: string;
         startDate?: string;
         endDate?: string;

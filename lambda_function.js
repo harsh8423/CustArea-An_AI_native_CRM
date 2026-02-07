@@ -619,26 +619,45 @@ exports.handler = async (event) => {
       - contactId: ${contactId}
       - attachments: ${attachmentRecords.length}`);
 
-    // 9. Queue message for AI processing
+    // 9. Queue message for AI processing (if enabled for this specific inbound email)
     const backendUrl = process.env.BACKEND_API_URL;
-    if (backendUrl) {
+    if (backendUrl && inboundAddress) {
       try {
-        const response = await fetch(`${backendUrl}/api/ai/queue/${msgId}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            tenantId,
-            conversationId,
-            channel: 'email'
-          })
-        });
-        const result = await response.json();
-        console.log(`AI queue result: queued=${result.queued}, reason=${result.reason || 'success'}`);
+        // Check if AI is enabled for this specific inbound email address
+        const aiCheckResult = await client.query(`
+          SELECT * FROM check_ai_enabled_for_email($1, $2)
+        `, [tenantId, inboundAddress]);
+        
+        const aiEnabled = aiCheckResult.rows.length > 0 && aiCheckResult.rows[0].is_ai_enabled;
+        
+        if (aiEnabled) {
+          console.log(`AI deployment is enabled for ${inboundAddress}, queuing message...`);
+          
+          const response = await fetch(`${backendUrl}/api/ai/queue/${msgId}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              tenantId,
+              conversationId,
+              channel: 'email',
+              inboundAddress  // Pass inbound address for additional context
+            })
+          });
+          const result = await response.json();
+          console.log(`AI queue result: queued=${result.queued}, reason=${result.reason || 'success'}`);
+        } else {
+          console.log(`AI deployment is NOT enabled for ${inboundAddress}, skipping AI queue`);
+        }
       } catch (aiErr) {
-        console.warn('Failed to queue for AI processing:', aiErr.message);
+        console.warn('Failed to check/queue for AI processing:', aiErr.message);
       }
     } else {
-      console.log('BACKEND_API_URL not set, skipping AI queue');
+      if (!backendUrl) {
+        console.log('BACKEND_API_URL not set, skipping AI queue');
+      }
+      if (!inboundAddress) {
+        console.log('No inbound address available, skipping AI queue');
+      }
     }
 
   } catch (err) {

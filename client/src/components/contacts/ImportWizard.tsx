@@ -17,7 +17,28 @@ export function ImportWizard({ isOpen, onClose, onComplete }: ImportWizardProps)
     const [result, setResult] = useState<any>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
+    // Group selection state
+    const [groupOption, setGroupOption] = useState<'none' | 'existing' | 'new'>('none');
+    const [selectedGroupId, setSelectedGroupId] = useState<string>('');
+    const [newGroupName, setNewGroupName] = useState('');
+    const [availableGroups, setAvailableGroups] = useState<any[]>([]);
+
     if (!isOpen) return null;
+
+    // Load available groups when wizard opens
+    const loadGroups = async () => {
+        try {
+            const data = await api.contactGroups.list();
+            setAvailableGroups(data.groups || []);
+        } catch (err) {
+            console.error("Failed to load groups", err);
+        }
+    };
+
+    // Load groups on open
+    if (isOpen && availableGroups.length === 0) {
+        loadGroups();
+    }
 
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -59,7 +80,17 @@ export function ImportWizard({ isOpen, onClose, onComplete }: ImportWizardProps)
         setLoading(true);
         try {
             await api.import.map(jobId, mappings);
-            const res = await api.import.process(jobId);
+
+            // Prepare group data
+            const groupData: any = {};
+            if (groupOption === 'existing' && selectedGroupId) {
+                groupData.group_id = selectedGroupId;
+            } else if (groupOption === 'new' && newGroupName.trim()) {
+                groupData.create_group = true;
+                groupData.group_name = newGroupName.trim();
+            }
+
+            const res = await api.import.process(jobId, groupData);
             setResult(res);
             setStep("process");
         } catch (err) {
@@ -74,6 +105,9 @@ export function ImportWizard({ isOpen, onClose, onComplete }: ImportWizardProps)
         setStep("upload");
         setJobId(null);
         setResult(null);
+        setGroupOption('none');
+        setSelectedGroupId('');
+        setNewGroupName('');
         onClose();
         if (step === "process") onComplete();
     };
@@ -96,13 +130,13 @@ export function ImportWizard({ isOpen, onClose, onComplete }: ImportWizardProps)
                             <div className="h-12 w-12 bg-white rounded-full shadow-sm flex items-center justify-center mb-4">
                                 <Upload className="h-6 w-6 text-black" />
                             </div>
-                            <h4 className="font-medium mb-2">Upload CSV File</h4>
+                            <h4 className="font-medium mb-2">Upload CSV or Excel File</h4>
                             <p className="text-sm text-gray-500 mb-6 text-center max-w-xs">
-                                Drag and drop your CSV file here, or click to browse.
+                                Upload a CSV (.csv) or Excel (.xlsx, .xls) file with your contacts.
                             </p>
                             <input
                                 type="file"
-                                accept=".csv"
+                                accept=".csv,.xlsx,.xls"
                                 ref={fileInputRef}
                                 className="hidden"
                                 onChange={handleFileUpload}
@@ -119,7 +153,68 @@ export function ImportWizard({ isOpen, onClose, onComplete }: ImportWizardProps)
 
                     {step === "map" && (
                         <div className="space-y-4">
-                            <p className="text-sm text-gray-500">Map columns from your CSV to CRM fields.</p>
+                            {/* Group Selection Section */}
+                            <div className="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                                <h4 className="font-medium text-sm mb-3 text-gray-900">📁 Group Assignment (Optional)</h4>
+                                <div className="space-y-3">
+                                    <label className="flex items-center gap-2 text-sm">
+                                        <input
+                                            type="radio"
+                                            name="groupOption"
+                                            checked={groupOption === 'none'}
+                                            onChange={() => setGroupOption('none')}
+                                            className="text-blue-600"
+                                        />
+                                        <span>Don't add to a group</span>
+                                    </label>
+
+                                    <label className="flex items-center gap-2 text-sm">
+                                        <input
+                                            type="radio"
+                                            name="groupOption"
+                                            checked={groupOption === 'existing'}
+                                            onChange={() => setGroupOption('existing')}
+                                            className="text-blue-600"
+                                        />
+                                        <span>Add to existing group</span>
+                                    </label>
+                                    {groupOption === 'existing' && (
+                                        <select
+                                            value={selectedGroupId}
+                                            onChange={(e) => setSelectedGroupId(e.target.value)}
+                                            className="ml-6 w-full p-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                        >
+                                            <option value="">Select a group...</option>
+                                            {availableGroups.map(g => (
+                                                <option key={g.id} value={g.id}>{g.name} ({g.contact_count || 0} contacts)</option>
+                                            ))}
+                                        </select>
+                                    )}
+
+                                    <label className="flex items-center gap-2 text-sm">
+                                        <input
+                                            type="radio"
+                                            name="groupOption"
+                                            checked={groupOption === 'new'}
+                                            onChange={() => setGroupOption('new')}
+                                            className="text-blue-600"
+                                        />
+                                        <span>Create new group</span>
+                                    </label>
+                                    {groupOption === 'new' && (
+                                        <input
+                                            type="text"
+                                            placeholder="Enter group name..."
+                                            value={newGroupName}
+                                            onChange={(e) => setNewGroupName(e.target.value)}
+                                            className="ml-6 w-full p-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                        />
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Column Mapping Section */}
+                            <p className="text-sm text-gray-500">Map columns from your file to CRM fields.</p>
                             <div className="space-y-2">
                                 {columns.map(col => {
                                     const currentMapping = mappings[col.id] || "";
@@ -197,8 +292,8 @@ export function ImportWizard({ isOpen, onClose, onComplete }: ImportWizardProps)
                         </button>
                         <button
                             onClick={handleProcess}
-                            disabled={loading}
-                            className="px-4 py-2 bg-black text-white rounded-lg text-sm font-medium hover:bg-gray-800 transition disabled:opacity-50"
+                            disabled={loading || (groupOption === 'new' && !newGroupName.trim()) || (groupOption === 'existing' && !selectedGroupId)}
+                            className="px-4 py-2 bg-black text-white rounded-lg text-sm font-medium hover:bg-gray-800 transition disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             {loading ? "Processing..." : "Import Contacts"}
                         </button>

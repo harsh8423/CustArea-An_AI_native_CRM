@@ -7,27 +7,28 @@ const siteName = 'CustArea';
 export const metadata: Metadata = {
   // Basic SEO
   title: {
-    default: 'CustArea - On-demand AI for Sales and Customer Support',
+    default: 'CustArea - AI Agents for Sales & Customer Support Automation',
     template: '%s | CustArea',
   },
-  description: 'Step in when needed, stay invisible when not. Active when your team is offline or overloaded. Specially designed for small businesses.',
+  description: 'Automate your business with CustArea. On-demand AI Agents for WhatsApp, Email, and Phone. Unified inbox, visual workflows, and 24/7 customer engagement.',
   keywords: [
-    'CRM software',
-    'AI CRM',
-    'Customer relationship management',
+    'AI Sales Agent',
+    'Customer Support Automation',
     'WhatsApp Business API',
-    'Omni-channel inbox',
-    'AI customer support',
-    'Workflow automation',
-    'Customer engagement platform',
-    'Sales pipeline management',
-    'AI chatbot',
-    'Lead management',
-    'Customer service automation',
+    'AI Chatbot for Business',
+    'Omnichannel Inbox',
+    'Unified Customer Communication',
+    'Workflow Automation Tool',
+    'Sales Pipeline Automation',
+    'Lead Qualification AI',
+    'Small Business CRM',
+    'CustArea',
+    'Voice AI Agent',
   ],
   authors: [{ name: 'CustArea Team' }],
   creator: 'CustArea',
   publisher: 'CustArea',
+  applicationName: 'CustArea',
 
   // Canonical URL
   metadataBase: new URL(siteUrl),
@@ -41,14 +42,14 @@ export const metadata: Metadata = {
     locale: 'en_US',
     url: siteUrl,
     siteName: siteName,
-    title: 'CustArea - On-demand AI for Sales and Customer Support',
-    description: 'Step in when needed, stay invisible when not. Active when your team is offline or overloaded.',
+    title: 'CustArea - AI Agents for Sales & Support Automation',
+    description: 'Stop losing leads to missed calls and slow replies. CustArea automates your sales and support with intelligent AI agents on WhatsApp, Email, and Phone.',
     images: [
       {
-        url: '/logo.png',
+        url: '/og-image.png', // Ensure this image exists or use logo
         width: 1200,
-        height: 1200,
-        alt: 'CustArea - On-demand AI for Sales and Customer Support',
+        height: 630,
+        alt: 'CustArea - AI Automation Platform',
       },
     ],
   },
@@ -56,9 +57,9 @@ export const metadata: Metadata = {
   // Twitter Card
   twitter: {
     card: 'summary_large_image',
-    title: 'CustArea - On-demand AI for Sales and Customer Support',
-    description: 'Step in when needed, stay invisible when not. Active when your team is offline or overloaded.',
-    images: ['/logo.png'],
+    title: 'CustArea - AI Agents for Sales & Support',
+    description: 'Automate your business communication 24/7. AI Agents for WhatsApp, Email, & Phone.',
+    images: ['/og-image.png'], // Ensure this image exists
     creator: '@custarea',
     site: '@custarea',
   },
@@ -79,8 +80,9 @@ export const metadata: Metadata = {
   // App Icons
   icons: {
     icon: [
-      { url: '/favicon-16x16.png', sizes: '16x16', type: 'image/png' },
-      { url: '/favicon-32x32.png', sizes: '32x32', type: 'image/png' },
+      { url: '/favicon.ico', sizes: 'any' },
+      { url: '/icon-192.png', sizes: '192x192', type: 'image/png' },
+      { url: '/icon-512.png', sizes: '512x512', type: 'image/png' },
     ],
     apple: [
       { url: '/apple-touch-icon.png', sizes: '180x180', type: 'image/png' },
@@ -88,13 +90,7 @@ export const metadata: Metadata = {
   },
 
   // Manifest
-  manifest: '/site.webmanifest',
-
-  // Verification (add your verification codes)
-  // verification: {
-  //   google: 'YOUR_GOOGLE_VERIFICATION_CODE',
-  //   yandex: 'YOUR_YANDEX_VERIFICATION_CODE',
-  // },
+  manifest: '/manifest.json',
 
   // Category
   category: 'technology',
@@ -115,16 +111,18 @@ const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'SoftwareApplication',
   name: 'CustArea',
+  headline: 'AI-Native Customer Engagement Platform',
   applicationCategory: 'BusinessApplication',
-  operatingSystem: 'Web',
-  description: 'AI-Native Customer Relationship Platform that unifies WhatsApp, Email, Phone & Chat with intelligent automation.',
+  operatingSystem: 'Cloud/Web',
+  description: 'Unified platform for AI-driven customer support and sales automation across WhatsApp, Email, and Phone.',
   url: siteUrl,
-  logo: `${siteUrl}/logo.png`,
+  image: `${siteUrl}/icon-512.png`,
+  logo: `${siteUrl}/icon-512.png`,
   offers: {
     '@type': 'Offer',
     price: '0',
     priceCurrency: 'USD',
-    description: 'Free trial available',
+    description: 'Start for free, upgrade as you grow.',
   },
   aggregateRating: {
     '@type': 'AggregateRating',
@@ -134,15 +132,12 @@ const jsonLd = {
     worstRating: '1',
   },
   featureList: [
-    'Omni-Channel Inbox',
-    'AI Agents',
-    'Visual Workflow Builder',
-    'Sales Pipeline Management',
-    'Knowledge Base with RAG',
-    'Smart Ticketing',
-    'WhatsApp Business Integration',
-    'Email Integration',
-    'Phone Integration',
+    'Omni-Channel Inbox (WhatsApp, Email, Phone)',
+    'AI Agents for Sales & Support',
+    'Visual Workflow Automation',
+    'CRM & Pipeline Management',
+    'RAG Knowledge Base',
+    'Automated Ticketing',
     'Live Chat Widget',
   ],
 };
@@ -153,7 +148,7 @@ const organizationJsonLd = {
   '@type': 'Organization',
   name: 'CustArea',
   url: siteUrl,
-  logo: `${siteUrl}/logo.png`,
+  logo: `${siteUrl}/icon-512.png`,
   sameAs: [
     'https://twitter.com/custarea',
     'https://linkedin.com/company/custarea',
@@ -163,7 +158,56 @@ const organizationJsonLd = {
     '@type': 'ContactPoint',
     contactType: 'customer support',
     availableLanguage: ['English'],
+    email: 'support@custarea.com',
   },
+};
+
+// FAQ Schema
+const faqJsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'FAQPage',
+  mainEntity: [
+    {
+      '@type': 'Question',
+      name: 'How does the AI agent handle complex queries?',
+      acceptedAnswer: {
+        '@type': 'Answer',
+        text: 'Our AI uses RAG (Retrieval-Augmented Generation) to search your knowledge base for accurate, grounded answers. It automatically detects sentiment and intent, follows guardrails, and escalates to humans when needed.'
+      }
+    },
+    {
+      '@type': 'Question',
+      name: 'Can I connect my existing WhatsApp Business account?',
+      acceptedAnswer: {
+        '@type': 'Answer',
+        text: 'Yes! CustArea integrates with WhatsApp Business API through Twilio. Connect your existing verified business number or set up a new one. All conversations sync to your unified inbox.'
+      }
+    },
+    {
+      '@type': 'Question',
+      name: 'How does the visual workflow automation work?',
+      acceptedAnswer: {
+        '@type': 'Answer',
+        text: 'Our drag-and-drop builder lets you create powerful automations without code. Start with a trigger, add conditions and branching logic, use AI nodes to generate responses, and define multi-channel actions.'
+      }
+    },
+    {
+      '@type': 'Question',
+      name: 'Is my customer data secure?',
+      acceptedAnswer: {
+        '@type': 'Answer',
+        text: 'Security is our top priority. We use JWT authentication, bcrypt hashing, role-based access control, and per-tenant data isolation. AI guardrails filter sensitive content.'
+      }
+    },
+    {
+      '@type': 'Question',
+      name: 'What channels do you support?',
+      acceptedAnswer: {
+        '@type': 'Answer',
+        text: 'CustArea provides omni-channel support: WhatsApp Business API, Email (webhooks and SMTP), Phone/Voice with real-time AI, and an embeddable Live Chat widget. All channels flow into a unified inbox.'
+      }
+    }
+  ]
 };
 
 export default function RootLayout({
@@ -189,6 +233,10 @@ export default function RootLayout({
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationJsonLd) }}
+        />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }}
         />
       </head>
       <body className="bg-white text-gray-800 antialiased">

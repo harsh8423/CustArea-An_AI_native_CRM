@@ -36,34 +36,64 @@ exports.listConversations = async (req, res) => {
                 co.email as contact_email,
                 u.name as assigned_to_name,
                 oc.name as campaign_name,
-                oc.reply_handling as campaign_reply_handling
+                oc.reply_handling as campaign_reply_handling,
+                -- Read/Unread status
+                COALESCE(crs.is_read, false) as is_read,
+                crs.read_at,
+                -- Star status
+                CASE WHEN cs.conversation_id IS NOT NULL THEN true ELSE false END as is_starred,
+                cs.starred_at,
+                -- Forward detection
+                CASE WHEN ca.id IS NOT NULL THEN true ELSE false END as is_forwarded,
+                fu.name as forwarded_by_name
             FROM conversations c
             LEFT JOIN contacts co ON c.contact_id = co.id
             LEFT JOIN users u ON c.assigned_to = u.id
             LEFT JOIN outreach_campaigns oc ON c.campaign_id = oc.id
+            LEFT JOIN conversation_read_status crs ON crs.conversation_id = c.id AND crs.user_id = $2
+            LEFT JOIN conversation_stars cs ON cs.conversation_id = c.id AND cs.user_id = $2
+            LEFT JOIN conversation_activities ca ON ca.conversation_id = c.id 
+                AND ca.activity_type = 'forwarded' 
+                AND ca.metadata->>'to_user_id' = $2::text
+            LEFT JOIN users fu ON fu.id = (ca.metadata->>'from_user_id')::uuid
             WHERE c.tenant_id = $1
         `;
-        const params = [tenantId];
-        let paramIndex = 2;
+        const params = [tenantId, userId];
+        let paramIndex = 3;
 
         // RBAC Filter: Non-super admin users can only see:
         // 1. Conversations assigned to them
-        // 2. Conversations using their allowed email addresses (for email channel)
+        // 2. Conversations for email addresses they have access to (inbound OR outbound)
+        // 3. Conversations forwarded to them
         if (!isSuperAdmin) {
             query += ` AND (
                 c.assigned_to = $${paramIndex}
                 OR (
                     c.channel = 'email' 
-                    AND EXISTS (
-                        SELECT 1 FROM user_outbound_email_access uoea
-                        LEFT JOIN tenant_email_connections tec ON tec.id = uoea.email_connection_id
-                        LEFT JOIN tenant_allowed_from_emails tafe ON tafe.id = uoea.allowed_from_email_id
-                        WHERE uoea.user_id = $${paramIndex}
-                        AND (
-                            tec.email_address = c.channel_contact_id 
-                            OR tafe.email_address = c.channel_contact_id
+                    AND (
+                        EXISTS (
+                            SELECT 1 FROM user_inbound_email_access uiea
+                            JOIN allowed_inbound_emails aie ON aie.id = uiea.allowed_inbound_email_id
+                            WHERE uiea.user_id = $${paramIndex}
+                            AND aie.email_address = c.mailbox_email
+                        )
+                        OR EXISTS (
+                            SELECT 1 FROM user_outbound_email_access uoea
+                            LEFT JOIN tenant_email_connections tec ON tec.id = uoea.email_connection_id
+                            LEFT JOIN tenant_allowed_from_emails tafe ON tafe.id = uoea.allowed_from_email_id
+                            WHERE uoea.user_id = $${paramIndex}
+                            AND (
+                                tec.email_address = c.mailbox_email 
+                                OR tafe.email_address = c.mailbox_email
+                            )
                         )
                     )
+                )
+                OR EXISTS (
+                    SELECT 1 FROM conversation_activities ca_filter
+                    WHERE ca_filter.conversation_id = c.id
+                    AND ca_filter.activity_type = 'forwarded'
+                    AND ca_filter.metadata->>'to_user_id' = $${paramIndex}::text
                 )
             )`;
             params.push(userId);
@@ -112,6 +142,17 @@ exports.listConversations = async (req, res) => {
             query += ` AND c.is_campaign = true AND c.has_reply = true`;
         }
 
+        // Unread filter
+        const { unreadOnly, starredOnly } = req.query;
+        if (unreadOnly === 'true') {
+            query += ` AND COALESCE(crs.is_read, false) = false`;
+        }
+
+        // Starred filter
+        if (starredOnly === 'true') {
+            query += ` AND cs.conversation_id IS NOT NULL`;
+        }
+
         query += ` ORDER BY c.last_message_at DESC NULLS LAST, c.created_at DESC`;
         query += ` LIMIT $${paramIndex++} OFFSET $${paramIndex++}`;
         params.push(parseInt(limit), parseInt(offset));
@@ -132,16 +173,30 @@ exports.listConversations = async (req, res) => {
                 c.assigned_to = $${countParamIndex}
                 OR (
                     c.channel = 'email' 
-                    AND EXISTS (
-                        SELECT 1 FROM user_outbound_email_access uoea
-                        LEFT JOIN tenant_email_connections tec ON tec.id = uoea.email_connection_id
-                        LEFT JOIN tenant_allowed_from_emails tafe ON tafe.id = uoea.allowed_from_email_id
-                        WHERE uoea.user_id = $${countParamIndex}
-                        AND (
-                            tec.email_address = c.channel_contact_id 
-                            OR tafe.email_address = c.channel_contact_id
+                    AND (
+                        EXISTS (
+                            SELECT 1 FROM user_inbound_email_access uiea
+                            JOIN allowed_inbound_emails aie ON aie.id = uiea.allowed_inbound_email_id
+                            WHERE uiea.user_id = $${countParamIndex}
+                            AND aie.email_address = c.channel_contact_id
+                        )
+                        OR EXISTS (
+                            SELECT 1 FROM user_outbound_email_access uoea
+                            LEFT JOIN tenant_email_connections tec ON tec.id = uoea.email_connection_id
+                            LEFT JOIN tenant_allowed_from_emails tafe ON tafe.id = uoea.allowed_from_email_id
+                            WHERE uoea.user_id = $${countParamIndex}
+                            AND (
+                                tec.email_address = c.channel_contact_id 
+                                OR tafe.email_address = c.channel_contact_id
+                            )
                         )
                     )
+                )
+                OR EXISTS (
+                    SELECT 1 FROM conversation_activities ca_count
+                    WHERE ca_count.conversation_id = c.id
+                    AND ca_count.activity_type = 'forwarded'
+                    AND ca_count.metadata->>'to_user_id' = $${countParamIndex}::text
                 )
             )`;
             countParams.push(userId);
@@ -457,3 +512,138 @@ exports.deleteConversation = async (req, res) => {
         res.status(500).json({ error: "Failed to delete conversation" });
     }
 };
+
+// PATCH /api/conversations/:id/mark-read - Mark conversation as read
+exports.markAsRead = async (req, res) => {
+    const userId = req.user.id;
+    const { id } = req.params;
+
+    try {
+        // Upsert read status
+        await pool.query(
+            `INSERT INTO conversation_read_status (user_id, conversation_id, is_read, read_at)
+             VALUES ($1, $2, true, NOW())
+             ON CONFLICT (user_id, conversation_id)
+             DO UPDATE SET is_read = true, read_at = NOW()`,
+            [userId, id]
+        );
+
+        res.json({ success: true, message: "Conversation marked as read" });
+    } catch (err) {
+        console.error("Error marking conversation as read:", err);
+        res.status(500).json({ error: "Failed to mark as read" });
+    }
+};
+
+// PATCH /api/conversations/:id/mark-unread - Mark conversation as unread
+exports.markAsUnread = async (req, res) => {
+    const userId = req.user.id;
+    const { id } = req.params;
+
+    try {
+        // Upsert read status
+        await pool.query(
+            `INSERT INTO conversation_read_status (user_id, conversation_id, is_read, read_at)
+             VALUES ($1, $2, false, NULL)
+             ON CONFLICT (user_id, conversation_id)
+             DO UPDATE SET is_read = false, read_at = NULL`,
+            [userId, id]
+        );
+
+        res.json({ success: true, message: "Conversation marked as unread" });
+    } catch (err) {
+        console.error("Error marking conversation as unread:", err);
+        res.status(500).json({ error: "Failed to mark as unread" });
+    }
+};
+
+// POST /api/conversations/:id/star - Toggle star status
+exports.toggleStar = async (req, res) => {
+    const userId = req.user.id;
+    const { id } = req.params;
+
+    try {
+        // Check if already starred
+        const checkResult = await pool.query(
+            `SELECT 1 FROM conversation_stars WHERE user_id = $1 AND conversation_id = $2`,
+            [userId, id]
+        );
+
+        if (checkResult.rows.length > 0) {
+            // Unstar
+            await pool.query(
+                `DELETE FROM conversation_stars WHERE user_id = $1 AND conversation_id = $2`,
+                [userId, id]
+            );
+            res.json({ success: true, is_starred: false, message: "Conversation unstarred" });
+        } else {
+            // Star
+            await pool.query(
+                `INSERT INTO conversation_stars (user_id, conversation_id, starred_at)
+                 VALUES ($1, $2, NOW())`,
+                [userId, id]
+            );
+            res.json({ success: true, is_starred: true, message: "Conversation starred" });
+        }
+    } catch (err) {
+        console.error("Error toggling star:", err);
+        res.status(500).json({ error: "Failed to toggle star" });
+    }
+};
+
+// GET /api/conversations/starred - Get all starred conversations
+exports.getStarredConversations = async (req, res) => {
+    const tenantId = req.user.tenantId;
+    const userId = req.user.id;
+    const { limit = 50, offset = 0 } = req.query;
+
+    try {
+        const result = await pool.query(
+            `SELECT 
+                c.*,
+                co.name as contact_name,
+                co.email as contact_email,
+                u.name as assigned_to_name,
+                oc.name as campaign_name,
+                oc.reply_handling as campaign_reply_handling,
+                COALESCE(crs.is_read, false) as is_read,
+                crs.read_at,
+                true as is_starred,
+                cs.starred_at,
+                CASE WHEN ca.id IS NOT NULL THEN true ELSE false END as is_forwarded,
+                fu.name as forwarded_by_name
+            FROM conversations c
+            INNER JOIN conversation_stars cs ON cs.conversation_id = c.id AND cs.user_id = $2
+            LEFT JOIN contacts co ON c.contact_id = co.id
+            LEFT JOIN users u ON c.assigned_to = u.id
+            LEFT JOIN outreach_campaigns oc ON c.campaign_id = oc.id
+            LEFT JOIN conversation_read_status crs ON crs.conversation_id = c.id AND crs.user_id = $2
+            LEFT JOIN conversation_activities ca ON ca.conversation_id = c.id 
+                AND ca.activity_type = 'forwarded' 
+                AND ca.metadata->>'to_user_id' = $2::text
+            LEFT JOIN users fu ON fu.id = (ca.metadata->>'from_user_id')::uuid
+            WHERE c.tenant_id = $1
+            ORDER BY cs.starred_at DESC
+            LIMIT $3 OFFSET $4`,
+            [tenantId, userId, parseInt(limit), parseInt(offset)]
+        );
+
+        const countResult = await pool.query(
+            `SELECT COUNT(*) FROM conversation_stars cs
+             INNER JOIN conversations c ON c.id = cs.conversation_id
+             WHERE cs.user_id = $1 AND c.tenant_id = $2`,
+            [userId, tenantId]
+        );
+
+        res.json({
+            conversations: result.rows,
+            total: parseInt(countResult.rows[0].count),
+            limit: parseInt(limit),
+            offset: parseInt(offset)
+        });
+    } catch (err) {
+        console.error("Error getting starred conversations:", err);
+        res.status(500).json({ error: "Failed to get starred conversations" });
+    }
+};
+

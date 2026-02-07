@@ -344,37 +344,8 @@ function CampaignWizard({ onBack, onComplete }: { onBack: () => void; onComplete
 
     const handleNext = async () => {
         if (step < 5) {
-            // If moving from step 4 to 5, create the campaign first
-            if (step === 4) {
-                setLoading(true);
-                try {
-                    // Create campaign
-                    const campaignRes = await campaignApi.create(formData);
-                    const newCampaignId = campaignRes.campaign.id;
-                    setCampaignId(newCampaignId);
-
-                    // Set email rotation with type information
-                    if (formData.email_connection_ids.length > 0) {
-                        const emailConnectionsWithType = formData.email_connection_ids.map(id => {
-                            const connection = emailConnections.find(c => c.id === id);
-                            return {
-                                id,
-                                type: connection?.type || 'connection'
-                            };
-                        });
-                        await campaignApi.setEmailRotation(newCampaignId, emailConnectionsWithType);
-                    }
-
-                    setStep(5); // Move to template editor
-                } catch (error) {
-                    console.error('Failed to create campaign:', error);
-                    alert('Failed to create campaign. Please try again.');
-                } finally {
-                    setLoading(false);
-                }
-            } else {
-                setStep(step + 1);
-            }
+            // Simply move to next step - campaign creation happens at step 5
+            setStep(step + 1);
         }
     };
     const handleBack = () => {
@@ -397,10 +368,42 @@ function CampaignWizard({ onBack, onComplete }: { onBack: () => void; onComplete
     };
 
     const handleCompleteWizard = async () => {
-        // Campaign already created, templates already saved
-        // Just complete the wizard
-        alert('Campaign created successfully! You can now launch it to start sending emails.');
-        onComplete();
+        if (templates.length === 0) {
+            alert('Please generate templates before completing.');
+            return;
+        }
+
+        setLoading(true);
+        try {
+            // Create campaign
+            const campaignRes = await campaignApi.create(formData);
+            const newCampaignId = campaignRes.campaign.id;
+
+            // Set email rotation
+            if (formData.email_connection_ids.length > 0) {
+                const emailConnectionsWithType = formData.email_connection_ids.map(id => {
+                    const connection = emailConnections.find(c => c.id === id);
+                    return {
+                        id,
+                        type: connection?.type || 'connection'
+                    };
+                });
+                await campaignApi.setEmailRotation(newCampaignId, emailConnectionsWithType);
+            }
+
+            // Save AI-generated templates to campaign
+            for (const template of templates) {
+                await campaignApi.createTemplate(newCampaignId, template);
+            }
+
+            alert('Campaign created successfully! You can now launch it to start sending emails.');
+            onComplete();
+        } catch (error) {
+            console.error('Failed to create campaign:', error);
+            alert('Failed to create campaign. Please try again.');
+        } finally {
+            setLoading(false);
+        }
     };
 
     const totalSteps = 5;
@@ -447,9 +450,9 @@ function CampaignWizard({ onBack, onComplete }: { onBack: () => void; onComplete
                 {step === 4 && (
                     <Step4AISettings formData={formData} setFormData={setFormData} />
                 )}
-                {step === 5 && campaignId && (
+                {step === 5 && (
                     <Step5TemplateEditor
-                        campaignId={campaignId}
+                        formData={formData}
                         templates={templates}
                         setTemplates={setTemplates}
                         generating={generating}
@@ -480,7 +483,7 @@ function CampaignWizard({ onBack, onComplete }: { onBack: () => void; onComplete
                 ) : (
                     <button
                         onClick={handleCompleteWizard}
-                        disabled={loading || generating}
+                        disabled={loading || generating || templates.length === 0}
                         className="flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-xl hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition shadow-sm font-medium"
                     >
                         {loading ? (
@@ -849,13 +852,13 @@ function Step4AISettings({ formData, setFormData }: any) {
 
 // Step 5: Template Editor
 function Step5TemplateEditor({
-    campaignId,
+    formData,
     templates,
     setTemplates,
     generating,
     setGenerating
 }: {
-    campaignId: string;
+    formData: any;
     templates: any[];
     setTemplates: (templates: any[]) => void;
     generating: boolean;
@@ -870,31 +873,69 @@ function Step5TemplateEditor({
     const [newFollowUpValue, setNewFollowUpValue] = useState<number>(3);
     const [newFollowUpUnit, setNewFollowUpUnit] = useState<string>('days');
 
-    useEffect(() => {
-        fetchTemplates();
-    }, [campaignId]);
-
-    const fetchTemplates = async () => {
-        try {
-            const res = await campaignApi.getTemplates(campaignId);
-            setTemplates(res.templates || []);
-        } catch (error) {
-            console.error('Failed to fetch templates:', error);
-        }
-    };
-
     const handleGenerateTemplates = async () => {
         setGenerating(true);
         try {
-            await campaignApi.generateTemplates(campaignId, 2);
-            await fetchTemplates();
+            const response = await campaignApi.generateTemplatesPreview(formData, 2);
+            console.log('Template response:', response); // Debug log
+
+            // Ensure we have an array of templates
+            const templatesArray = Array.isArray(response.templates)
+                ? response.templates
+                : (response.templates ? [response.templates] : []);
+
+            setTemplates(templatesArray);
+
+            if (templatesArray.length === 0) {
+                alert('No templates were generated. Please try again.');
+            }
         } catch (error) {
-            console.error('Failed to generate', error);
-            alert('Failed to generate templates');
+            console.error('Failed to generate templates:', error);
+            alert('Failed to generate templates: ' + ((error as Error).message || 'Unknown error'));
         } finally {
             setGenerating(false);
         }
     };
+
+    // Show generate button if templates not yet generated
+    if (templates.length === 0) {
+        return (
+            <div className="max-w-2xl mx-auto py-8">
+                <div className="text-center p-8 bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 rounded-xl">
+                    <Sparkles className="h-12 w-12 text-blue-500 mx-auto mb-4" />
+                    <h3 className="text-lg font-semibold text-gray-900 mb-2">Generate AI Email Templates</h3>
+                    <p className="text-sm text-gray-600 mb-6">
+                        Our AI will create personalized email sequences based on your campaign details.
+                    </p>
+                    <button
+                        onClick={handleGenerateTemplates}
+                        disabled={generating}
+                        className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-xl hover:opacity-90 disabled:opacity-50 transition shadow-md font-medium mx-auto"
+                    >
+                        {generating ? (
+                            <>
+                                <RefreshCw className="h-5 w-5 animate-spin" />
+                                Generating Templates...
+                            </>
+                        ) : (
+                            <>
+                                <Sparkles className="h-5 w-5" />
+                                Generate Templates
+                            </>
+                        )}
+                    </button>
+                    <div className="text-xs text-gray-500 mt-6">
+                        <p className="font-medium mb-2">We'll create:</p>
+                        <ul className="space-y-1">
+                            <li>• Initial outreach email</li>
+                            <li>• 2 follow-up emails with smart timing</li>
+                            <li>• Personalized content based on your inputs</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     const handleEditTemplate = (template: any) => {
         setEditingId(template.id);
@@ -904,53 +945,38 @@ function Step5TemplateEditor({
         setEditWaitUnit(template.wait_period_unit || 'days');
     };
 
-    const handleSaveEdit = async () => {
+    const handleSaveEdit = () => {
         if (!editingId) return;
-        try {
-            await campaignApi.updateTemplate(campaignId, editingId, {
-                subject: editSubject,
-                body_html: editBody,
-                wait_period_value: editWaitValue,
-                wait_period_unit: editWaitUnit
-            });
-            await fetchTemplates();
-            setEditingId(null);
-            setEditSubject('');
-            setEditBody('');
-        } catch (error) {
-            console.error('Save failed:', error);
-            alert('Failed to save changes: ' + (error as Error).message);
-        }
+        // Update template in local state
+        setTemplates(templates.map(t =>
+            t.id === editingId
+                ? { ...t, subject: editSubject, body_html: editBody, wait_period_value: editWaitValue, wait_period_unit: editWaitUnit }
+                : t
+        ));
+        setEditingId(null);
+        setEditSubject('');
+        setEditBody('');
     };
 
-    const handleAddFollowUp = async () => {
-        try {
-            await campaignApi.createTemplate(campaignId, {
-                template_type: 'follow_up',
-                subject: 'Follow-up',
-                body_html: '<p>Follow-up email</p>',
-                wait_period_value: newFollowUpValue,
-                wait_period_unit: newFollowUpUnit
-            });
-            await fetchTemplates();
-            setShowAddFollowUpModal(false);
-            setNewFollowUpValue(3);
-            setNewFollowUpUnit('days');
-        } catch (error) {
-            console.error('Add follow-up failed:', error);
-            alert('Failed to add follow-up: ' + (error as Error).message);
-        }
+    const handleAddFollowUp = () => {
+        // Add follow-up to local state
+        const newTemplate = {
+            id: `temp-${Date.now()}`,
+            template_type: 'follow_up',
+            subject: 'Follow-up',
+            body_html: '<p>Follow-up email</p>',
+            wait_period_value: newFollowUpValue,
+            wait_period_unit: newFollowUpUnit
+        };
+        setTemplates([...templates, newTemplate]);
+        setShowAddFollowUpModal(false);
+        setNewFollowUpValue(3);
+        setNewFollowUpUnit('days');
     };
 
-    const handleDeleteTemplate = async (templateId: string) => {
+    const handleDeleteTemplate = (templateId: string) => {
         if (!confirm('Delete this template?')) return;
-        try {
-            await campaignApi.deleteTemplate(campaignId, templateId);
-            await fetchTemplates();
-        } catch (error) {
-            console.error('Delete failed:', error);
-            alert('Failed to delete template: ' + (error as Error).message);
-        }
+        setTemplates(templates.filter(t => t.id !== templateId));
     };
 
     return (

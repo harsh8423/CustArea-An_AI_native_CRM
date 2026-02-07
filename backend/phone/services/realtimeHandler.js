@@ -304,6 +304,17 @@ function setupRealtimeHandler() {
             session.openaiWs = openAiWs;
             session.voiceAgentConfig = voiceAgentConfig;
 
+            // Update session.aiConfig with actual values used (overwriting defaults)
+            session.aiConfig = {
+                ai_provider: 'openai',
+                ai_model: voiceAgentConfig.realtimeModel.modelName,
+                ai_voice_id: voiceAgentConfig.realtimeModel.voiceName || 'alloy',
+                latency_mode: 'realtime',
+                // For Realtime API, STT/TTS are built-in but we can log them as openai
+                stt_provider: 'openai', 
+                tts_provider: 'openai'
+            };
+
             // Build system prompt (this can happen after WebSocket is connected)
             systemPrompt = await buildCompleteSystemPrompt(
                 voiceAgentConfig.tenantId, 

@@ -15,4 +15,8 @@ router.get('/', listAllPermissions);
 // Get current user's effective permissions
 router.get('/me', getCurrentUserPermissions);
 
+// Alias for frontend compatibility
+router.get('/check', getCurrentUserPermissions);
+
 module.exports = router;
+

@@ -324,12 +324,19 @@ exports.receiveInboundMessage = async (req, res) => {
         let isNewConversation = false;
 
         if (convResult.rows.length === 0) {
+            // Extract mailbox email for email conversations (recipient address)
+            let mailboxEmail = null;
+            if (channel === 'email' && channelMetadata.toAddresses && channelMetadata.toAddresses.length > 0) {
+                // Get the first recipient email address
+                mailboxEmail = channelMetadata.toAddresses[0].email || null;
+            }
+
             // Create new conversation (with or without contact)
             const newConv = await client.query(
                 `INSERT INTO conversations (
                     tenant_id, contact_id, channel, channel_contact_id, subject, status,
-                    sender_display_name, sender_identifier_type, sender_identifier_value
-                ) VALUES ($1, $2, $3, $4, $5, 'open', $6, $7, $8)
+                    sender_display_name, sender_identifier_type, sender_identifier_value, mailbox_email
+                ) VALUES ($1, $2, $3, $4, $5, 'open', $6, $7, $8, $9)
                 RETURNING *`,
                 [
                     tenantId, 
@@ -339,7 +346,8 @@ exports.receiveInboundMessage = async (req, res) => {
                     subject,
                     contact ? null : senderDisplayName, // Only set if no contact
                     contact ? null : senderIdType,
-                    contact ? null : senderIdValue
+                    contact ? null : senderIdValue,
+                    mailboxEmail  // For RBAC filtering
                 ]
             );
             conversation = newConv.rows[0];

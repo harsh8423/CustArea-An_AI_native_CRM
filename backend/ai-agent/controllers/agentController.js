@@ -466,13 +466,13 @@ async function deleteEscalationGuidance(req, res) {
 async function chatWithAgent(req, res) {
     try {
         const tenantId = req.user.tenantId;
-        const { conversationId, contactId, message, history } = req.body;
+        const { conversationId, contactId, message, history, channel, instruction } = req.body;
 
         if (!message) {
             return res.status(400).json({ error: 'Message is required' });
         }
 
-        const result = await chat(tenantId, conversationId, contactId, message, history || []);
+        const result = await chat(tenantId, conversationId, contactId, message, history || [], channel, instruction);
         res.json(result);
     } catch (error) {
         console.error('Error in chat:', error);

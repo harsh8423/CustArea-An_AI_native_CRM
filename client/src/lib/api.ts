@@ -8,6 +8,7 @@ interface AuthResponse {
     useOTP?: boolean;
 }
 
+// API client for all backend endpoints - Last updated: 2026-02-06
 export const api = {
     auth: {
         // ==== MAGIC LINK AUTH ====
@@ -21,7 +22,7 @@ export const api = {
             });
             return res.json();
         },
-        verifyMagicLink: async (data: { email: string; supabaseToken: string; companyName?: string }): Promise<AuthResponse> => {
+        verifyMagicLink: async (data: { email?: string; supabaseToken?: string; code?: string; companyName?: string }): Promise<AuthResponse> => {
             const res = await fetch(`${API_BASE_URL}/v2/auth/verify-magic-link`, {
                 method: "POST",
                 headers: {
@@ -264,11 +265,15 @@ export const api = {
             });
             return res.json();
         },
-        process: async (id: string) => {
+        process: async (id: string, groupData?: { group_id?: string; create_group?: boolean; group_name?: string }) => {
             const token = localStorage.getItem("token");
             const res = await fetch(`${API_BASE_URL}/import/${id}/process`, {
                 method: "POST",
-                headers: { Authorization: `Bearer ${token}` }
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`
+                },
+                body: JSON.stringify(groupData || {})
             });
             return res.json();
         }
@@ -342,9 +347,70 @@ export const api = {
                 body: JSON.stringify({ score })
             });
             return res.json();
+        },
+        assign: async (id: string, userId: string) => {
+            const token = localStorage.getItem("token");
+            const res = await fetch(`${API_BASE_URL}/leads/${id}/assign`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`
+                },
+                body: JSON.stringify({ userId })
+            });
+            return res.json();
+        },
+        delete: async (ids: string[]) => {
+            const token = localStorage.getItem("token");
+            const res = await fetch(`${API_BASE_URL}/leads`, {
+                method: "DELETE",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`
+                },
+                body: JSON.stringify({ ids })
+            });
+            if (!res.ok) {
+                const error = await res.json();
+                throw error;
+            }
+            return res.json();
         }
     },
     email: {
+        // Domain Ownership Workflow (NEW)
+        claimDomain: async (domain: string) => {
+            const token = localStorage.getItem("token");
+            const res = await fetch(`${API_BASE_URL}/email/identities/claim-domain`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`
+                },
+                body: JSON.stringify({ domain })
+            });
+            if (!res.ok) {
+                const error = await res.json();
+                throw error;
+            }
+            return res.json();
+        },
+        verifyDomainOwnership: async (domain: string) => {
+            const token = localStorage.getItem("token");
+            const res = await fetch(`${API_BASE_URL}/email/identities/verify-ownership`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`
+                },
+                body: JSON.stringify({ domain })
+            });
+            if (!res.ok) {
+                const error = await res.json();
+                throw error;
+            }
+            return res.json();
+        },
         // SES Identities
         getIdentities: async () => {
             const token = localStorage.getItem("token");
@@ -363,6 +429,10 @@ export const api = {
                 },
                 body: JSON.stringify({ domain })
             });
+            if (!res.ok) {
+                const error = await res.json();
+                throw error;
+            }
             return res.json();
         },
         checkIdentityStatus: async (id: string) => {
@@ -543,6 +613,37 @@ export const api = {
             const token = localStorage.getItem("token");
             const res = await fetch(`${API_BASE_URL}/conversations/${id}`, {
                 method: "DELETE",
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            return res.json();
+        },
+        markAsRead: async (id: string) => {
+            const token = localStorage.getItem("token");
+            const res = await fetch(`${API_BASE_URL}/conversations/${id}/mark-read`, {
+                method: "PATCH",
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            return res.json();
+        },
+        markAsUnread: async (id: string) => {
+            const token = localStorage.getItem("token");
+            const res = await fetch(`${API_BASE_URL}/conversations/${id}/mark-unread`, {
+                method: "PATCH",
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            return res.json();
+        },
+        toggleStar: async (id: string) => {
+            const token = localStorage.getItem("token");
+            const res = await fetch(`${API_BASE_URL}/conversations/${id}/star`, {
+                method: "POST",
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            return res.json();
+        },
+        getStarred: async () => {
+            const token = localStorage.getItem("token");
+            const res = await fetch(`${API_BASE_URL}/conversations/starred`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             return res.json();
@@ -1134,66 +1235,6 @@ export const api = {
             return res.json();
         }
     },
-    conversations: {
-        list: async (params: any) => {
-            const query = new URLSearchParams(params).toString();
-            const token = localStorage.getItem("token");
-            const res = await fetch(`${API_BASE_URL}/conversations?${query}`, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
-            return res.json();
-        },
-        getMessages: async (conversationId: string, params: any = {}) => {
-            const query = new URLSearchParams(params).toString();
-            const token = localStorage.getItem("token");
-            const res = await fetch(`${API_BASE_URL}/conversations/${conversationId}/messages?${query}`, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
-            return res.json();
-        },
-        delete: async (conversationId: string) => {
-            const token = localStorage.getItem("token");
-            const res = await fetch(`${API_BASE_URL}/conversations/${conversationId}`, {
-                method: "DELETE",
-                headers: { Authorization: `Bearer ${token}` }
-            });
-            if (!res.ok) {
-                throw new Error('Failed to delete conversation');
-            }
-            return res.json();
-        },
-        getStats: async () => {
-            const token = localStorage.getItem("token");
-            const res = await fetch(`${API_BASE_URL}/conversations/stats`, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
-            return res.json();
-        },
-        update: async (conversationId: string, data: any) => {
-            const token = localStorage.getItem("token");
-            const res = await fetch(`${API_BASE_URL}/conversations/${conversationId}`, {
-                method: "PATCH",
-                headers: {
-                    "Content-Type": "application/json",
-                    Authorization: `Bearer ${token}`
-                },
-                body: JSON.stringify(data)
-            });
-            return res.json();
-        },
-        sendMessage: async (conversationId: string, data: any) => {
-            const token = localStorage.getItem("token");
-            const res = await fetch(`${API_BASE_URL}/conversations/${conversationId}/messages`, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    Authorization: `Bearer ${token}`
-                },
-                body: JSON.stringify(data)
-            });
-            return res.json();
-        }
-    },
     bulkEmail: {
         sendBulk: async (data: {
             groupId: string;
@@ -1305,6 +1346,37 @@ export const api = {
             });
             if (!response.ok) throw new Error('Failed to fetch bulk job history');
             return response.json();
+        }
+    },
+
+
+    // Phone Calls (Individual)
+    phone: {
+        getHistory: async (params?: {
+            limit?: number;
+            offset?: number;
+            search?: string;
+            startDate?: string;
+            endDate?: string;
+            userId?: string;
+        }) => {
+            const token = localStorage.getItem('token');
+            const query = params ? new URLSearchParams(params as any).toString() : "";
+            const res = await fetch(`${API_BASE_URL}/phone/calls?${query}`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            return res.json();
+        }
+    },
+
+    // Users
+    users: {
+        list: async () => {
+            const token = localStorage.getItem("token");
+            const res = await fetch(`${API_BASE_URL}/users`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            return res.json();
         }
     },
 

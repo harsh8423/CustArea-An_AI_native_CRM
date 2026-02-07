@@ -19,6 +19,9 @@ export interface AnalyticsMetrics {
         calls_by_human: number;
         calls_duration_seconds: number;
         campaigns_created: number;
+        campaign_emails_sent: number;  // Added: Campaign emails total
+        campaign_emails_sent_by_ai?: number;  // Added: AI-sent campaign emails
+        campaign_emails_sent_by_human?: number;  // Added: Human-sent campaign emails
         leads_created: number;
         contacts_created: number;
         tickets_created: number;
@@ -64,7 +67,7 @@ export const analyticsApi = {
     // Get analytics metrics
     getMetrics: async (params: {
         userId?: string;
-        timeRange?: 'daily' | 'weekly' | 'monthly';
+        timeRange?: 'daily' | 'weekly' | 'monthly' | 'custom';
         category?: string;
         startDate?: string;
         endDate?: string;

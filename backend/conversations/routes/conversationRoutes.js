@@ -10,7 +10,11 @@ const {
     assignConversation,
     getConversationStats,
     linkContactToConversation,
-    deleteConversation
+    deleteConversation,
+    markAsRead,
+    markAsUnread,
+    toggleStar,
+    getStarredConversations
 } = require('../controllers/conversationController');
 const {
     listMessages,
@@ -32,6 +36,10 @@ router.patch('/:id', requirePermission('conversations.view'), updateConversation
 router.post('/:id/assign', requirePermission('conversations.assign'), assignConversation);
 router.post('/:id/forward', requirePermission('conversations.forward'), forwardConversation);
 router.patch('/:id/link-contact', requirePermission('conversations.view'), linkContactToConversation);
+router.patch('/:id/mark-read', requirePermission('conversations.view'), markAsRead);
+router.patch('/:id/mark-unread', requirePermission('conversations.view'), markAsUnread);
+router.post('/:id/star', requirePermission('conversations.view'), toggleStar);
+router.get('/starred', requirePermission('conversations.view'), getStarredConversations);
 router.delete('/:id', requirePermission('conversations.view'), deleteConversation);
 
 // Message routes (nested under conversations)

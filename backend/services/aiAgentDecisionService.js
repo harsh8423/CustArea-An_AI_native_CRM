@@ -15,6 +15,22 @@ const { pool } = require('../config/db');
  */
 async function shouldAgentRespond(tenantId, channel, resourceId, resourceType = null) {
     try {
+        // PHONE CHANNEL: Check tenant-level phone feature first
+        if (channel === 'phone') {
+            const phoneFeatureCheck = await pool.query(`
+                SELECT is_phone_enabled FROM tenant_phone_config 
+                WHERE tenant_id = $1 AND id = $2
+            `, [tenantId, resourceId]);
+
+            if (phoneFeatureCheck.rows.length === 0 || !phoneFeatureCheck.rows[0].is_phone_enabled) {
+                return {
+                    shouldRespond: false,
+                    deployment: null,
+                    reason: 'Phone feature is disabled at tenant level'
+                };
+            }
+        }
+
         // Auto-detect resource type if not provided
         if (!resourceType) {
             resourceType = detectResourceType(channel);

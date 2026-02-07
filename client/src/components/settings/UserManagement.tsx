@@ -7,7 +7,8 @@ import { EditUserRolesDialog } from './EditUserRolesDialog';
 import { ViewUserPermissionsDialog } from './ViewUserPermissionsDialog';
 import { GrantPermissionsDialog } from './GrantPermissionsDialog';
 import { ManageUserFeaturesDialog } from './ManageUserFeaturesDialog';
-import { Edit, Shield, Trash2, UserCog, UserPlus, Eye, KeyRound, ToggleLeft } from 'lucide-react';
+import { GrantChannelAccessDialog } from './GrantChannelAccessDialog';
+import { Edit, Shield, Trash2, UserCog, UserPlus, Eye, KeyRound, ToggleLeft, Radio } from 'lucide-react';
 
 interface User {
     id: string;
@@ -31,8 +32,10 @@ export function UserManagement() {
     const [showPermissionsDialog, setShowPermissionsDialog] = useState(false);
     const [showGrantPermissionsDialog, setShowGrantPermissionsDialog] = useState(false);
     const [showManageFeaturesDialog, setShowManageFeaturesDialog] = useState(false);
+    const [showChannelAccessDialog, setShowChannelAccessDialog] = useState(false);
     const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
     const [selectedUserName, setSelectedUserName] = useState<string>('');
+    const [userChannelAccess, setUserChannelAccess] = useState<any>(null);
     const [selectedUserRoles, setSelectedUserRoles] = useState<string[]>([]);
 
     // Check permissions
@@ -107,6 +110,26 @@ export function UserManagement() {
         setSelectedUserId(user.id);
         setSelectedUserName(user.name || user.email);
         setShowManageFeaturesDialog(true);
+    };
+
+    const handleManageChannelAccess = async (user: User) => {
+        try {
+            // Fetch user details including current channel access
+            const data = await rbacApi.users.get(user.id);
+            if (data.user) {
+                setUserChannelAccess({
+                    inbound_emails: data.user.inbound_emails || [],
+                    outbound_emails: data.user.outbound_emails || [],
+                    phone_numbers: data.user.phone_numbers || []
+                });
+                setSelectedUserId(user.id);
+                setSelectedUserName(user.name || user.email);
+                setShowChannelAccessDialog(true);
+            }
+        } catch (error) {
+            console.error('Failed to fetch user channel access:', error);
+            alert('Failed to load user channel access');
+        }
     };
 
     // Check if user has super admin role
@@ -245,6 +268,13 @@ export function UserManagement() {
                                                 {canManage && (
                                                     <>
                                                         <button
+                                                            onClick={() => handleManageChannelAccess(user)}
+                                                            className="text-gray-400 hover:text-indigo-600 p-1 rounded-lg hover:bg-indigo-50 transition-colors"
+                                                            title="Manage Channel Access"
+                                                        >
+                                                            <Radio className="h-4 w-4" />
+                                                        </button>
+                                                        <button
                                                             onClick={() => handleManageFeatures(user)}
                                                             className="text-gray-400 hover:text-blue-500 p-1 rounded-lg hover:bg-blue-50 transition-colors"
                                                             title="Manage Feature Access"
@@ -352,6 +382,19 @@ export function UserManagement() {
                         setShowManageFeaturesDialog(false);
                         setSelectedUserId(null);
                         setSelectedUserName('');
+                    }}
+                    onSuccess={loadUsers}
+                />
+            )}
+
+            {showChannelAccessDialog && selectedUserId && userChannelAccess && (
+                <GrantChannelAccessDialog
+                    userId={selectedUserId}
+                    currentAccess={userChannelAccess}
+                    onClose={() => {
+                        setShowChannelAccessDialog(false);
+                        setSelectedUserId(null);
+                        setUserChannelAccess(null);
                     }}
                     onSuccess={loadUsers}
                 />

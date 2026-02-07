@@ -1,572 +1,397 @@
-'use client';
+"use client";
 
 import { useState, useEffect } from 'react';
-import {
-    Bot, Mail, MessageCircle, Phone, MessageSquare, Loader2,
-    Save, Clock, Calendar, AlertCircle, CheckCircle, Power,
-    Settings2, Zap, Users, ChevronRight, Globe
-} from 'lucide-react';
+import { Bot, Mail, Phone, MessageSquare, MessageCircle, Loader2, Settings as SettingsIcon, Clock, Shield, CheckCircle2 } from 'lucide-react';
 
-const API_BASE = 'http://localhost:8000/api/ai-agent';
+// Helper function to get token from cookies
+function getToken() {
+    if (typeof document !== 'undefined') {
+        const cookie = document.cookie.split('; ').find(row => row.startsWith('token='));
+        return cookie ? cookie.split('=')[1] : null;
+    }
+    return null;
+}
 
-async function fetchAPI(endpoint: string, options: RequestInit = {}) {
-    const token = localStorage.getItem('token');
-    const res = await fetch(`${API_BASE}${endpoint}`, {
-        ...options,
-        headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`,
-            ...options.headers,
-        },
-    });
-    if (!res.ok) throw new Error(`API error: ${res.status}`);
-    return res.json();
+interface Resource {
+    id: string;
+    display_name: string;
+    source_type?: string;
+    is_active: boolean;
+    has_deployment: boolean;
+    deployment_id: string | null;
+    ai_enabled: boolean | null;
+    schedule_enabled?: boolean;
+    schedule_start_time?: string;
+    schedule_end_time?: string;
+    schedule_days?: string[];
+    schedule_timezone?: string;
+    priority_mode?: string;
+    channel: string;
+}
+
+interface UserPermissions {
+    hasConfigurePermission: boolean;
+    hasSuperAdmin: boolean;
 }
 
 const CHANNELS = [
-    {
-        id: 'widget',
-        name: 'Chat Widget',
-        icon: MessageSquare,
-        color: 'from-purple-500 to-indigo-600',
-        bgLight: 'bg-purple-50',
-        borderColor: 'border-purple-200',
-        textColor: 'text-purple-600',
-        description: 'Website chat - always active',
-        alwaysOn: true,
-    },
-    {
-        id: 'whatsapp',
-        name: 'WhatsApp',
-        icon: MessageCircle,
-        color: 'from-green-500 to-emerald-600',
-        bgLight: 'bg-green-50',
-        borderColor: 'border-green-200',
-        textColor: 'text-green-600',
-        description: 'Handle WhatsApp conversations',
-        alwaysOn: false,
-    },
-    {
-        id: 'email',
-        name: 'Email',
-        icon: Mail,
-        color: 'from-orange-500 to-amber-600',
-        bgLight: 'bg-orange-50',
-        borderColor: 'border-orange-200',
-        textColor: 'text-orange-600',
-        description: 'Respond to incoming emails',
-        alwaysOn: false,
-    },
-    {
-        id: 'phone',
-        name: 'Phone',
-        icon: Phone,
-        color: 'from-blue-500 to-cyan-600',
-        bgLight: 'bg-blue-50',
-        borderColor: 'border-blue-200',
-        textColor: 'text-blue-600',
-        description: 'AI voice for phone calls',
-        alwaysOn: false,
-    },
+    { id: 'all', label: 'All Channels', icon: Bot },
+    { id: 'email', label: 'Email', icon: Mail },
+    { id: 'phone', label: 'Phone', icon: Phone },
+    { id: 'whatsapp', label: 'WhatsApp', icon: MessageCircle },
+    { id: 'widget', label: 'Widget', icon: MessageSquare },
 ];
 
-const DAYS = [
-    { id: 'monday', short: 'M', label: 'Mon' },
-    { id: 'tuesday', short: 'T', label: 'Tue' },
-    { id: 'wednesday', short: 'W', label: 'Wed' },
-    { id: 'thursday', short: 'T', label: 'Thu' },
-    { id: 'friday', short: 'F', label: 'Fri' },
-    { id: 'saturday', short: 'S', label: 'Sat' },
-    { id: 'sunday', short: 'S', label: 'Sun' },
-];
-
-const TIMEZONES = [
-    { value: 'Asia/Kolkata', label: 'India (IST)' },
-    { value: 'America/New_York', label: 'US Eastern (EST)' },
-    { value: 'America/Los_Angeles', label: 'US Pacific (PST)' },
-    { value: 'Europe/London', label: 'UK (GMT)' },
-    { value: 'Europe/Paris', label: 'Europe (CET)' },
-    { value: 'Asia/Dubai', label: 'Dubai (GST)' },
-    { value: 'Asia/Singapore', label: 'Singapore (SGT)' },
-    { value: 'Australia/Sydney', label: 'Australia (AEST)' },
-    { value: 'UTC', label: 'UTC' },
-];
-
-interface ChannelConfig {
-    channel: string;
-    is_enabled: boolean;
-    schedule_enabled: boolean;
-    schedule_start_time: string;
-    schedule_end_time: string;
-    schedule_days: string[];
-    schedule_timezone: string;
-    auto_respond: boolean;
-    handoff_enabled: boolean;
-    max_messages_before_handoff: number;
-    welcome_message: string;
-    handoff_message: string;
-    away_message: string;
-    priority_mode: string;
-}
-
-export default function DeployPage() {
-    const [deployments, setDeployments] = useState<Record<string, ChannelConfig>>({});
+export default function AIDeployPage() {
+    const [resources, setResources] = useState<Resource[]>([]);
     const [loading, setLoading] = useState(true);
-    const [saving, setSaving] = useState<string | null>(null);
-    const [selectedChannel, setSelectedChannel] = useState<string>('widget');
-    const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
+    const [permissions, setPermissions] = useState<UserPermissions>({
+        hasConfigurePermission: false,
+        hasSuperAdmin: false
+    });
+    const [configDialogOpen, setConfigDialogOpen] = useState(false);
+    const [selectedResource, setSelectedResource] = useState<Resource | null>(null);
+    const [selectedChannel, setSelectedChannel] = useState<string>('all');
 
     useEffect(() => {
-        loadDeployments();
+        fetchResources();
+        checkPermissions();
     }, []);
 
-    async function loadDeployments() {
+    async function checkPermissions() {
         try {
-            const data = await fetchAPI('/deployments');
-            const mapped: Record<string, ChannelConfig> = {};
-
-            CHANNELS.forEach(ch => {
-                mapped[ch.id] = {
-                    channel: ch.id,
-                    is_enabled: ch.alwaysOn, // Widget always on
-                    schedule_enabled: false,
-                    schedule_start_time: '09:00',
-                    schedule_end_time: '18:00',
-                    schedule_days: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'],
-                    schedule_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-                    auto_respond: true,
-                    handoff_enabled: true,
-                    max_messages_before_handoff: 10,
-                    welcome_message: '',
-                    handoff_message: 'Let me connect you with a human agent who can help further.',
-                    away_message: 'Our team is currently away. Our AI assistant will help you.',
-                    priority_mode: 'normal'
-                };
+            const token = getToken();
+            if (!token) return;
+            const response = await fetch('/api/permissions/check', {
+                headers: { 'Authorization': `Bearer ${token}` }
             });
-
-            if (Array.isArray(data)) {
-                data.forEach((d: any) => {
-                    if (mapped[d.channel]) {
-                        mapped[d.channel] = { ...mapped[d.channel], ...d };
-                        // Widget is always on
-                        if (d.channel === 'widget') {
-                            mapped[d.channel].is_enabled = true;
-                        }
-                    }
-                });
-            }
-
-            setDeployments(mapped);
+            const data = await response.json();
+            setPermissions({
+                hasConfigurePermission: data.permissions?.includes('ai.configure') || data.isSuperAdmin || false,
+                hasSuperAdmin: data.isSuperAdmin || false
+            });
         } catch (err) {
-            console.error('Failed to load deployments:', err);
-            const mapped: Record<string, ChannelConfig> = {};
-            CHANNELS.forEach(ch => {
-                mapped[ch.id] = {
-                    channel: ch.id,
-                    is_enabled: ch.alwaysOn,
-                    schedule_enabled: false,
-                    schedule_start_time: '09:00',
-                    schedule_end_time: '18:00',
-                    schedule_days: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'],
-                    schedule_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-                    auto_respond: true,
-                    handoff_enabled: true,
-                    max_messages_before_handoff: 10,
-                    welcome_message: '',
-                    handoff_message: 'Let me connect you with a human agent.',
-                    away_message: 'Our team is currently away.',
-                    priority_mode: 'normal'
-                };
-            });
-            setDeployments(mapped);
+            console.error('Error checking permissions:', err);
+        }
+    }
+
+    async function fetchResources() {
+        try {
+            setLoading(true);
+            const token = getToken();
+            if (!token) { setLoading(false); return; }
+
+            const response = await fetch('/api/ai/available-resources', { headers: { 'Authorization': `Bearer ${token}` } });
+            if (response.ok) {
+                const data = await response.json();
+                if (data.success && data.data) {
+                    const flattenedResources: Resource[] = [];
+                    if (Array.isArray(data.data.email)) data.data.email.forEach((item: any) => flattenedResources.push({ ...item, channel: 'email' }));
+                    if (Array.isArray(data.data.phone)) data.data.phone.forEach((item: any) => flattenedResources.push({ ...item, channel: 'phone' }));
+                    if (Array.isArray(data.data.whatsapp)) data.data.whatsapp.forEach((item: any) => flattenedResources.push({ ...item, channel: 'whatsapp' }));
+                    if (Array.isArray(data.data.widget)) data.data.widget.forEach((item: any) => flattenedResources.push({ ...item, channel: 'widget' }));
+                    setResources(flattenedResources);
+                }
+            }
+        } catch (err) {
+            console.error('Error fetching resources:', err);
         } finally {
             setLoading(false);
         }
     }
 
-    function updateConfig(channel: string, updates: Partial<ChannelConfig>) {
-        // Widget is always on
-        if (channel === 'widget' && 'is_enabled' in updates) {
-            updates.is_enabled = true;
-        }
-        setDeployments(prev => ({
-            ...prev,
-            [channel]: { ...prev[channel], ...updates }
-        }));
-    }
-
-    async function saveConfig(channel: string) {
-        setSaving(channel);
+    async function toggleDeployment(resource: Resource) {
         try {
-            await fetchAPI(`/deployments/${channel}`, {
-                method: 'PUT',
-                body: JSON.stringify(deployments[channel])
-            });
-            setSaveSuccess(channel);
-            setTimeout(() => setSaveSuccess(null), 2000);
+            const token = getToken();
+            if (!token) { alert('Authentication required'); return; }
+
+            const isCurrentlyEnabled = resource.has_deployment && resource.ai_enabled;
+
+            if (isCurrentlyEnabled) {
+                if (!resource.deployment_id) return;
+                const response = await fetch(`/api/ai/deployments/${resource.deployment_id}/disable`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (response.ok) fetchResources();
+                else { const error = await response.json(); alert(error.message || 'Failed to disable AI'); }
+            } else {
+                if (resource.has_deployment && resource.deployment_id) {
+                    const response = await fetch(`/api/ai/deployments/${resource.deployment_id}/enable`, {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    if (response.ok) fetchResources();
+                    else { const error = await response.json(); alert(error.message || 'Failed to enable AI'); }
+                } else {
+                    const payload: any = { channel: resource.channel, resource_display_name: resource.display_name, is_enabled: true };
+                    if (resource.channel === 'email') {
+                        if (resource.source_type === 'inbound') payload.allowed_inbound_email_id = resource.id;
+                        else payload.email_connection_id = resource.id;
+                    } else if (resource.channel === 'phone') payload.phone_config_id = resource.id;
+                    else if (resource.channel === 'whatsapp') payload.whatsapp_account_id = resource.id;
+                    else if (resource.channel === 'widget') payload.widget_config_id = resource.id;
+
+                    const response = await fetch('/api/ai/deployments', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                        body: JSON.stringify(payload)
+                    });
+                    if (response.ok) fetchResources();
+                    else { const error = await response.json(); alert(error.message || 'Failed to enable AI'); }
+                }
+            }
         } catch (err) {
-            console.error('Failed to save:', err);
-        } finally {
-            setSaving(null);
+            console.error('Error toggling deployment:', err);
+            alert('Failed to update AI assistant');
         }
     }
 
-    async function saveAllConfigs() {
-        setSaving('all');
-        try {
-            await Promise.all(CHANNELS.map(ch =>
-                fetchAPI(`/deployments/${ch.id}`, {
-                    method: 'PUT',
-                    body: JSON.stringify(deployments[ch.id])
-                })
-            ));
-            setSaveSuccess('all');
-            setTimeout(() => setSaveSuccess(null), 2000);
-        } catch (err) {
-            console.error('Failed to save:', err);
-        } finally {
-            setSaving(null);
-        }
-    }
-
-    const config = deployments[selectedChannel];
-    const selectedChannelData = CHANNELS.find(c => c.id === selectedChannel)!;
+    const filteredResources = selectedChannel === 'all' ? resources : resources.filter(r => r.channel === selectedChannel);
 
     if (loading) {
         return (
             <div className="h-full flex items-center justify-center bg-[#eff0eb]">
-                <div className="flex flex-col items-center gap-3">
-                    <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
-                    <p className="text-sm text-gray-500">Loading deployment settings...</p>
+                <div className="text-center">
+                    <Loader2 className="w-6 h-6 animate-spin text-blue-400 mx-auto mb-2" />
+                    <p className="text-xs text-gray-500">Loading resources...</p>
+                </div>
+            </div>
+        );
+    }
+
+    if (!permissions.hasConfigurePermission) {
+        return (
+            <div className="h-full bg-[#eff0eb] p-4 flex items-center justify-center">
+                <div className="bg-white/80 backdrop-blur-xl rounded-3xl shadow-lg p-8 text-center max-w-md">
+                    <Shield className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+                    <h3 className="text-lg font-bold text-gray-900 mb-2">Access Restricted</h3>
+                    <p className="text-sm text-gray-500">
+                        You need administrator permissions to configure AI assistant settings.
+                    </p>
                 </div>
             </div>
         );
     }
 
     return (
-        <div className="h-full flex bg-[#eff0eb] p-4 gap-4 overflow-hidden">
-            {/* Left Panel - Channel Selection */}
-            <div className="w-80 bg-white rounded-2xl shadow-sm flex flex-col overflow-hidden">
-                {/* Header */}
-                <div className="p-5 border-b border-gray-100">
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
-                            <Bot className="w-5 h-5 text-white" />
+        <div className="h-full bg-[#eff0eb] p-4 font-sans">
+            <div className="h-full bg-gradient-to-br from-white/90 to-white/70 backdrop-blur-xl rounded-3xl shadow-lg overflow-hidden flex flex-col">
+
+                {/* Header & Tabs */}
+                <div className="px-6 pt-6 pb-4 border-b border-white/20">
+                    <div className="mb-6">
+                        <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-blue-50 rounded-full mb-2">
+                            <Bot className="w-3 h-3 text-blue-500" />
+                            <span className="text-[10px] font-semibold text-blue-700 uppercase tracking-wider">Deployment</span>
                         </div>
-                        <div>
-                            <h1 className="font-bold text-gray-900">Deploy Agent</h1>
-                            <p className="text-xs text-gray-500">Configure AI on channels</p>
-                        </div>
+                        <h1 className="text-xl font-bold text-gray-900">Where should your AI work?</h1>
+                        <p className="text-sm text-gray-500 mt-1">Manage AI availability across your communication channels.</p>
+                    </div>
+
+                    <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-2">
+                        {CHANNELS.map(channel => {
+                            const Icon = channel.icon;
+                            const isActive = selectedChannel === channel.id;
+                            return (
+                                <button
+                                    key={channel.id}
+                                    onClick={() => setSelectedChannel(channel.id)}
+                                    className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold transition-all whitespace-nowrap ${isActive
+                                            ? 'bg-gradient-to-br from-blue-500 to-indigo-600 text-white shadow-md shadow-blue-200'
+                                            : 'bg-white/50 hover:bg-white text-gray-600 hover:text-gray-900 border border-transparent hover:border-gray-100'
+                                        }`}
+                                >
+                                    <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-white' : 'text-gray-500'}`} />
+                                    {channel.label}
+                                </button>
+                            );
+                        })}
                     </div>
                 </div>
 
-                {/* Channel List */}
-                <div className="flex-1 overflow-y-auto p-3 space-y-2">
-                    {CHANNELS.map(channel => {
-                        const ChannelIcon = channel.icon;
-                        const channelConfig = deployments[channel.id];
-                        const isSelected = selectedChannel === channel.id;
-                        const isActive = channelConfig?.is_enabled;
+                {/* Content */}
+                <div className="flex-1 overflow-y-auto p-6">
+                    {filteredResources.length === 0 ? (
+                        <div className="text-center py-20">
+                            <div className="w-16 h-16 bg-gray-100 rounded-full mx-auto flex items-center justify-center mb-4">
+                                <Bot className="w-8 h-8 text-gray-300" />
+                            </div>
+                            <h3 className="text-sm font-semibold text-gray-900 mb-1">No channels found</h3>
+                            <p className="text-xs text-gray-500 max-w-xs mx-auto">
+                                Check your settings to ensure you have connected {selectedChannel !== 'all' ? `your ${selectedChannel} accounts` : 'email or phone accounts'}.
+                            </p>
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-1 gap-3">
+                            {filteredResources.map((resource) => {
+                                const isEnabled = resource.has_deployment && resource.ai_enabled;
+                                return (
+                                    <div
+                                        key={resource.id}
+                                        className={`group p-4 bg-white hover:bg-blue-50/30 rounded-2xl shadow-sm border border-transparent hover:border-blue-100 transition-all flex items-center justify-between ${isEnabled ? 'bg-blue-50/10' : ''}`}
+                                    >
+                                        <div className="flex items-center gap-4 min-w-0">
+                                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 transition-colors ${isEnabled
+                                                    ? 'bg-gradient-to-br from-blue-500 to-indigo-600 text-white shadow-blue-200 shadow-md'
+                                                    : 'bg-gray-100 text-gray-400'
+                                                }`}>
+                                                {resource.channel === 'email' && <Mail className="w-5 h-5" />}
+                                                {resource.channel === 'phone' && <Phone className="w-5 h-5" />}
+                                                {resource.channel === 'whatsapp' && <MessageCircle className="w-5 h-5" />}
+                                                {resource.channel === 'widget' && <MessageSquare className="w-5 h-5" />}
+                                            </div>
 
-                        return (
-                            <button
-                                key={channel.id}
-                                onClick={() => setSelectedChannel(channel.id)}
-                                className={`w-full p-4 rounded-xl text-left transition-all duration-200 ${isSelected
-                                        ? `${channel.bgLight} ${channel.borderColor} border-2`
-                                        : 'bg-gray-50 border-2 border-transparent hover:bg-gray-100'
-                                    }`}
-                            >
-                                <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-3">
-                                        <div className={`w-10 h-10 rounded-lg bg-gradient-to-br ${channel.color} flex items-center justify-center`}>
-                                            <ChannelIcon className="w-5 h-5 text-white" />
+                                            <div className="min-w-0">
+                                                <div className="flex items-center gap-2 mb-0.5">
+                                                    <h3 className={`text-sm font-semibold truncate ${isEnabled ? 'text-gray-900' : 'text-gray-600'}`}>
+                                                        {resource.display_name}
+                                                    </h3>
+                                                    {resource.source_type && resource.source_type !== 'inbound' && (
+                                                        <span className="px-1.5 py-0.5 bg-gray-100 text-gray-500 text-[10px] font-medium rounded-md uppercase tracking-wider">
+                                                            {resource.source_type}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <div className="flex items-center gap-2 text-xs">
+                                                    {isEnabled ? (
+                                                        <span className="flex items-center gap-1 text-emerald-600 font-medium">
+                                                            <CheckCircle2 className="w-3 h-3" />
+                                                            Active
+                                                        </span>
+                                                    ) : (
+                                                        <span className="text-gray-400">Inactive</span>
+                                                    )}
+
+                                                    {resource.schedule_enabled && (
+                                                        <>
+                                                            <span className="w-1 h-1 rounded-full bg-gray-300" />
+                                                            <span className="flex items-center gap-1 text-blue-600">
+                                                                <Clock className="w-3 h-3" />
+                                                                Scheduled
+                                                            </span>
+                                                        </>
+                                                    )}
+                                                </div>
+                                            </div>
                                         </div>
-                                        <div>
-                                            <p className="font-semibold text-gray-900">{channel.name}</p>
-                                            <p className="text-xs text-gray-500">{channel.description}</p>
+
+                                        <div className="flex items-center gap-3 pl-4">
+                                            {permissions.hasConfigurePermission && (
+                                                <button
+                                                    onClick={() => {
+                                                        setSelectedResource(resource);
+                                                        setConfigDialogOpen(true);
+                                                    }}
+                                                    className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all opacity-0 group-hover:opacity-100"
+                                                    title="Configure settings"
+                                                >
+                                                    <SettingsIcon className="w-4 h-4" />
+                                                </button>
+                                            )}
+
+                                            <button
+                                                onClick={() => toggleDeployment(resource)}
+                                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${isEnabled ? 'bg-gradient-to-r from-blue-500 to-indigo-600' : 'bg-gray-200'
+                                                    }`}
+                                                disabled={!permissions.hasConfigurePermission}
+                                            >
+                                                <span
+                                                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform shadow-sm ${isEnabled ? 'translate-x-6' : 'translate-x-1'
+                                                        }`}
+                                                />
+                                            </button>
                                         </div>
                                     </div>
-                                    <div className="flex items-center gap-2">
-                                        {channel.alwaysOn ? (
-                                            <span className="px-2 py-1 bg-purple-100 text-purple-700 text-[10px] font-bold rounded-full">
-                                                ALWAYS ON
-                                            </span>
-                                        ) : isActive ? (
-                                            <span className="w-2.5 h-2.5 bg-green-500 rounded-full animate-pulse" />
-                                        ) : (
-                                            <span className="w-2.5 h-2.5 bg-gray-300 rounded-full" />
-                                        )}
-                                    </div>
-                                </div>
-                            </button>
-                        );
-                    })}
-                </div>
-
-                {/* Save All Button */}
-                <div className="p-4 border-t border-gray-100">
-                    <button
-                        onClick={saveAllConfigs}
-                        disabled={saving === 'all'}
-                        className="w-full py-3 bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-xl font-medium hover:opacity-90 disabled:opacity-50 transition-all flex items-center justify-center gap-2"
-                    >
-                        {saving === 'all' ? (
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                        ) : saveSuccess === 'all' ? (
-                            <CheckCircle className="w-4 h-4" />
-                        ) : (
-                            <Save className="w-4 h-4" />
-                        )}
-                        {saveSuccess === 'all' ? 'Saved!' : 'Save All Changes'}
-                    </button>
+                                );
+                            })}
+                        </div>
+                    )}
                 </div>
             </div>
 
-            {/* Right Panel - Configuration */}
-            <div className="flex-1 bg-white rounded-2xl shadow-sm flex flex-col overflow-hidden">
-                {config && (
-                    <>
-                        {/* Channel Header */}
-                        <div className={`p-6 ${selectedChannelData.bgLight} border-b`}>
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-4">
-                                    <div className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${selectedChannelData.color} flex items-center justify-center shadow-lg`}>
-                                        <selectedChannelData.icon className="w-7 h-7 text-white" />
+            {/* Config Dialog with Blur */}
+            {configDialogOpen && selectedResource && (
+                <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
+                    <div className="bg-white/95 backdrop-blur-xl rounded-2xl shadow-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto ring-1 ring-black/5 animate-in zoom-in-95 duration-200">
+                        <div className="p-5 border-b border-gray-100 flex items-center justify-between sticky top-0 bg-white/50 backdrop-blur-md z-10">
+                            <div>
+                                <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                                    Configure
+                                </h2>
+                                <p className="text-xs text-gray-500 truncate max-w-[300px]">{selectedResource.display_name}</p>
+                            </div>
+                            <button
+                                onClick={() => setConfigDialogOpen(false)}
+                                className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400 transition-colors"
+                            >
+                                <span className="text-xl leading-none">&times;</span>
+                            </button>
+                        </div>
+
+                        <div className="p-6 space-y-6">
+                            {/* Schedule Card (Placeholder/Active) */}
+                            <div className="p-4 bg-blue-50/50 rounded-xl border border-blue-100">
+                                <div className="flex gap-3">
+                                    <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
+                                        <Clock className="w-4 h-4 text-blue-600" />
                                     </div>
                                     <div>
-                                        <h2 className="text-xl font-bold text-gray-900">{selectedChannelData.name}</h2>
-                                        <p className="text-sm text-gray-600">{selectedChannelData.description}</p>
+                                        <h3 className="text-sm font-semibold text-gray-900">Availability Schedule</h3>
+                                        <p className="text-xs text-gray-500 mt-1">When should the AI be active?</p>
                                     </div>
                                 </div>
 
-                                {/* Power Toggle */}
-                                {!selectedChannelData.alwaysOn && (
-                                    <button
-                                        onClick={() => updateConfig(selectedChannel, { is_enabled: !config.is_enabled })}
-                                        className={`flex items-center gap-3 px-5 py-3 rounded-xl font-medium transition-all ${config.is_enabled
-                                                ? 'bg-green-500 text-white shadow-lg shadow-green-500/30'
-                                                : 'bg-gray-200 text-gray-600'
-                                            }`}
-                                    >
-                                        <Power className="w-5 h-5" />
-                                        {config.is_enabled ? 'Active' : 'Inactive'}
-                                    </button>
-                                )}
-                                {selectedChannelData.alwaysOn && (
-                                    <div className="flex items-center gap-2 px-4 py-2 bg-purple-100 rounded-xl">
-                                        <Zap className="w-4 h-4 text-purple-600" />
-                                        <span className="text-purple-700 font-medium text-sm">Always Active</span>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-
-                        {/* Configuration Content */}
-                        <div className="flex-1 overflow-y-auto p-6">
-                            <div className="max-w-3xl space-y-8">
-
-                                {/* Schedule Section */}
-                                <div className="bg-gray-50 rounded-2xl p-6">
-                                    <div className="flex items-center justify-between mb-6">
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center">
-                                                <Clock className="w-5 h-5 text-amber-600" />
-                                            </div>
-                                            <div>
-                                                <h3 className="font-semibold text-gray-900">Operating Hours</h3>
-                                                <p className="text-xs text-gray-500">Set when AI agent is active</p>
-                                            </div>
+                                {selectedResource.schedule_enabled ? (
+                                    <div className="mt-4 space-y-2">
+                                        <div className="flex items-center justify-between text-xs py-1 border-b border-blue-100/50">
+                                            <span className="text-gray-600">Status</span>
+                                            <span className="font-medium text-emerald-600">Active</span>
                                         </div>
-                                        <button
-                                            onClick={() => updateConfig(selectedChannel, { schedule_enabled: !config.schedule_enabled })}
-                                            className={`relative w-14 h-7 rounded-full transition-all ${config.schedule_enabled ? 'bg-amber-500' : 'bg-gray-300'
-                                                }`}
-                                        >
-                                            <div className={`absolute top-1 w-5 h-5 rounded-full bg-white shadow-sm transition-all ${config.schedule_enabled ? 'left-8' : 'left-1'
-                                                }`} />
-                                        </button>
-                                    </div>
-
-                                    {config.schedule_enabled && (
-                                        <div className="space-y-5 pl-13">
-                                            {/* Time Range */}
-                                            <div className="grid grid-cols-2 gap-4">
-                                                <div>
-                                                    <label className="block text-xs font-medium text-gray-700 mb-2">Start Time</label>
-                                                    <input
-                                                        type="time"
-                                                        value={config.schedule_start_time || '09:00'}
-                                                        onChange={(e) => updateConfig(selectedChannel, { schedule_start_time: e.target.value })}
-                                                        className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-amber-200 focus:border-amber-400 transition-all"
-                                                    />
-                                                </div>
-                                                <div>
-                                                    <label className="block text-xs font-medium text-gray-700 mb-2">End Time</label>
-                                                    <input
-                                                        type="time"
-                                                        value={config.schedule_end_time || '18:00'}
-                                                        onChange={(e) => updateConfig(selectedChannel, { schedule_end_time: e.target.value })}
-                                                        className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-amber-200 focus:border-amber-400 transition-all"
-                                                    />
-                                                </div>
-                                            </div>
-
-                                            {/* Days */}
-                                            <div>
-                                                <label className="block text-xs font-medium text-gray-700 mb-3">Active Days</label>
-                                                <div className="flex gap-2">
-                                                    {DAYS.map(day => {
-                                                        const isActive = config.schedule_days?.includes(day.id);
-                                                        return (
-                                                            <button
-                                                                key={day.id}
-                                                                onClick={() => {
-                                                                    const days = config.schedule_days || [];
-                                                                    const newDays = isActive
-                                                                        ? days.filter(d => d !== day.id)
-                                                                        : [...days, day.id];
-                                                                    updateConfig(selectedChannel, { schedule_days: newDays });
-                                                                }}
-                                                                className={`w-11 h-11 rounded-xl text-sm font-semibold transition-all ${isActive
-                                                                        ? `bg-gradient-to-br ${selectedChannelData.color} text-white shadow-md`
-                                                                        : 'bg-white border border-gray-200 text-gray-500 hover:border-gray-300'
-                                                                    }`}
-                                                            >
-                                                                {day.label}
-                                                            </button>
-                                                        );
-                                                    })}
-                                                </div>
-                                            </div>
-
-                                            {/* Timezone */}
-                                            <div>
-                                                <label className="block text-xs font-medium text-gray-700 mb-2">Timezone</label>
-                                                <div className="relative">
-                                                    <Globe className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                                                    <select
-                                                        value={config.schedule_timezone}
-                                                        onChange={(e) => updateConfig(selectedChannel, { schedule_timezone: e.target.value })}
-                                                        className="w-full pl-11 pr-4 py-3 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-amber-200 focus:border-amber-400 transition-all appearance-none"
-                                                    >
-                                                        {TIMEZONES.map(tz => (
-                                                            <option key={tz.value} value={tz.value}>{tz.label}</option>
-                                                        ))}
-                                                    </select>
-                                                </div>
-                                            </div>
+                                        <div className="flex items-center justify-between text-xs py-1 border-b border-blue-100/50">
+                                            <span className="text-gray-600">Time</span>
+                                            <span className="font-medium text-gray-900">
+                                                {selectedResource.schedule_start_time} - {selectedResource.schedule_end_time}
+                                            </span>
                                         </div>
-                                    )}
-                                </div>
-
-                                {/* Handoff Settings */}
-                                <div className="bg-gray-50 rounded-2xl p-6">
-                                    <div className="flex items-center justify-between mb-6">
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center">
-                                                <Users className="w-5 h-5 text-blue-600" />
-                                            </div>
-                                            <div>
-                                                <h3 className="font-semibold text-gray-900">Human Handoff</h3>
-                                                <p className="text-xs text-gray-500">Transfer to live agents when needed</p>
-                                            </div>
-                                        </div>
-                                        <button
-                                            onClick={() => updateConfig(selectedChannel, { handoff_enabled: !config.handoff_enabled })}
-                                            className={`relative w-14 h-7 rounded-full transition-all ${config.handoff_enabled ? 'bg-blue-500' : 'bg-gray-300'
-                                                }`}
-                                        >
-                                            <div className={`absolute top-1 w-5 h-5 rounded-full bg-white shadow-sm transition-all ${config.handoff_enabled ? 'left-8' : 'left-1'
-                                                }`} />
-                                        </button>
-                                    </div>
-
-                                    {config.handoff_enabled && (
-                                        <div className="space-y-4 pl-13">
-                                            <div>
-                                                <label className="block text-xs font-medium text-gray-700 mb-2">Handoff Message</label>
-                                                <textarea
-                                                    value={config.handoff_message || ''}
-                                                    onChange={(e) => updateConfig(selectedChannel, { handoff_message: e.target.value })}
-                                                    rows={2}
-                                                    className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition-all resize-none"
-                                                    placeholder="Let me connect you with a human agent..."
-                                                />
-                                            </div>
-                                            <div>
-                                                <label className="block text-xs font-medium text-gray-700 mb-2">Max Messages Before Handoff</label>
-                                                <input
-                                                    type="number"
-                                                    min={1}
-                                                    max={50}
-                                                    value={config.max_messages_before_handoff || 10}
-                                                    onChange={(e) => updateConfig(selectedChannel, { max_messages_before_handoff: parseInt(e.target.value) })}
-                                                    className="w-32 px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition-all"
-                                                />
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-
-                                {/* Messages */}
-                                <div className="bg-gray-50 rounded-2xl p-6">
-                                    <div className="flex items-center gap-3 mb-6">
-                                        <div className="w-10 h-10 rounded-xl bg-green-100 flex items-center justify-center">
-                                            <MessageSquare className="w-5 h-5 text-green-600" />
-                                        </div>
-                                        <div>
-                                            <h3 className="font-semibold text-gray-900">Custom Messages</h3>
-                                            <p className="text-xs text-gray-500">Personalize AI responses</p>
+                                        <div className="flex items-center justify-between text-xs py-1">
+                                            <span className="text-gray-600">Days</span>
+                                            <span className="font-medium text-gray-900">
+                                                {selectedResource.schedule_days?.join(', ') || 'All Days'}
+                                            </span>
                                         </div>
                                     </div>
-
-                                    <div className="space-y-4">
-                                        <div>
-                                            <label className="block text-xs font-medium text-gray-700 mb-2">Welcome Message</label>
-                                            <textarea
-                                                value={config.welcome_message || ''}
-                                                onChange={(e) => updateConfig(selectedChannel, { welcome_message: e.target.value })}
-                                                rows={2}
-                                                className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-green-200 focus:border-green-400 transition-all resize-none"
-                                                placeholder="Hello! How can I help you today?"
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="block text-xs font-medium text-gray-700 mb-2">Away Message</label>
-                                            <textarea
-                                                value={config.away_message || ''}
-                                                onChange={(e) => updateConfig(selectedChannel, { away_message: e.target.value })}
-                                                rows={2}
-                                                className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-green-200 focus:border-green-400 transition-all resize-none"
-                                                placeholder="Our team is currently away. Our AI will assist you."
-                                            />
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Save Button */}
-                        <div className="p-4 border-t border-gray-100 bg-gray-50">
-                            <button
-                                onClick={() => saveConfig(selectedChannel)}
-                                disabled={saving === selectedChannel}
-                                className={`px-6 py-3 bg-gradient-to-r ${selectedChannelData.color} text-white rounded-xl font-medium hover:opacity-90 disabled:opacity-50 transition-all flex items-center gap-2 shadow-lg`}
-                            >
-                                {saving === selectedChannel ? (
-                                    <Loader2 className="w-4 h-4 animate-spin" />
-                                ) : saveSuccess === selectedChannel ? (
-                                    <CheckCircle className="w-4 h-4" />
                                 ) : (
-                                    <Save className="w-4 h-4" />
+                                    <div className="mt-4">
+                                        <div className="px-3 py-2 bg-yellow-50 rounded-lg border border-yellow-100 text-xs text-yellow-800">
+                                            Advanced scheduling controls are coming soon.
+                                        </div>
+                                    </div>
                                 )}
-                                {saveSuccess === selectedChannel ? 'Saved!' : `Save ${selectedChannelData.name} Settings`}
+                            </div>
+
+                            {/* Additional Settings Placeholder */}
+                            <div className="p-4 bg-gray-50 rounded-xl border border-gray-100 opacity-60">
+                                <h3 className="text-sm font-semibold text-gray-900 mb-2">Response Behavior</h3>
+                                <div className="space-y-2">
+                                    <div className="h-2 bg-gray-200 rounded w-3/4"></div>
+                                    <div className="h-2 bg-gray-200 rounded w-1/2"></div>
+                                </div>
+                                <p className="text-[10px] text-gray-400 mt-3 italic">Custom response configurations coming soon.</p>
+                            </div>
+                        </div>
+
+                        <div className="p-4 border-t border-gray-100 bg-gray-50/50 sticky bottom-0 flex justify-end">
+                            <button
+                                onClick={() => setConfigDialogOpen(false)}
+                                className="px-4 py-2 bg-white border border-gray-200 text-gray-700 text-xs font-semibold rounded-xl hover:bg-gray-50 transition-all shadow-sm"
+                            >
+                                Close
                             </button>
                         </div>
-                    </>
-                )}
-            </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

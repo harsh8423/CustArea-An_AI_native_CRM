@@ -141,6 +141,7 @@ exports.createContact = async (req, res) => {
     try {
         const { name, email, phone, company_name, source } = req.body;
         const tenantId = req.user.tenantId;
+        const userId = req.user.id;  // FIXED: Extract user ID
 
         // Use contactResolver to ensure contact_identifiers are created
         const { createContact } = require('../services/contactResolver');
@@ -148,7 +149,7 @@ exports.createContact = async (req, res) => {
         const contact = await createContact(
             tenantId,
             { email, phone },  // identifiers
-            { name, source: source || 'Manual', companyName: company_name }  // metadata
+            { name, source: source || 'Manual', companyName: company_name, createdBy: userId }  // FIXED: Pass createdBy
         );
 
         res.status(201).json({ contact });
@@ -184,6 +185,7 @@ exports.updateContact = async (req, res) => {
     try {
         const { id } = req.params;
         const tenantId = req.user.tenantId;
+        const userId = req.user.id;  // FIXED: Extract user ID
         const { name, email, phone, company_name, metadata } = req.body;
 
         // Build dynamic update query
@@ -212,7 +214,11 @@ exports.updateContact = async (req, res) => {
             params.push(JSON.stringify(metadata));
         }
 
-        if (updates.length === 0) {
+        // FIXED: Always set updated_by
+        updates.push(`updated_by = $${paramCount++}`);
+        params.push(userId);
+
+        if (updates.length === 1) {  // Only updated_by
             return res.status(400).json({ error: 'No fields to update' });
         }
 

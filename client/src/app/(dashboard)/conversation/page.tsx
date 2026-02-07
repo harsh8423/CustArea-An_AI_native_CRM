@@ -14,7 +14,7 @@ import {
     Mail, MessageCircle, Phone, Search, MoreHorizontal,
     Send, Paperclip, Smile, Star, ChevronDown, ChevronUp,
     User, Tag, Edit, MessageSquare, RefreshCw, Check, Sparkles,
-    Ticket, X, Zap, Filter as FilterIcon, Trash, Reply, History, Forward
+    Ticket, X, Zap, Filter as FilterIcon, Trash, Reply, History, Forward, MailOpen
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -53,6 +53,13 @@ interface Conversation {
     sender_display_name?: string;
     sender_identifier_type?: string;
     sender_identifier_value?: string;
+    // Conversation enhancements
+    is_read?: boolean;
+    read_at?: string;
+    is_starred?: boolean;
+    starred_at?: string;
+    is_forwarded?: boolean;
+    forwarded_by_name?: string;
 }
 
 interface Message {
@@ -125,11 +132,13 @@ export default function ConversationPage() {
         mailbox: string | null;
         status: string | null;
         campaignReplies: boolean;
+        starredOnly: boolean;
     }>({
         channel: 'all',
         mailbox: null,
         status: null,
-        campaignReplies: false
+        campaignReplies: false,
+        starredOnly: false
     });
     const [mailboxes, setMailboxes] = useState<Array<{ id: string; email: string; description?: string }>>([]);
 
@@ -243,8 +252,24 @@ export default function ConversationPage() {
         }
     }, [autoCompose, prefillTo]);
 
-    const handleSelectConversation = (conv: Conversation) => {
+    const handleSelectConversation = async (conv: Conversation) => {
         setSelectedConversation(conv);
+
+        // Auto-mark as read if unread
+        if (!conv.is_read) {
+            try {
+                await api.conversations.markAsRead(conv.id);
+                const updatedConv = { ...conv, is_read: true, read_at: new Date().toISOString() };
+                // Update local state
+                setConversations(prev => prev.map(c =>
+                    c.id === conv.id ? updatedConv : c
+                ));
+                // Update selected conversation state
+                setSelectedConversation(updatedConv);
+            } catch (error) {
+                console.error('Error marking as read:', error);
+            }
+        }
     };
 
     const handleSendMessage = async () => {
@@ -261,7 +286,56 @@ export default function ConversationPage() {
         }
     };
 
-    const handleStatusChange = async (status: string) => {
+
+    const handleToggleStar = async (e?: React.MouseEvent) => {
+        e?.stopPropagation();
+        if (!selectedConversation) return;
+
+        try {
+            const result = await api.conversations.toggleStar(selectedConversation.id);
+            const updatedConv = {
+                ...selectedConversation,
+                is_starred: result.is_starred,
+                starred_at: result.is_starred ? new Date().toISOString() : undefined
+            };
+            // Update local state
+            setConversations(prev => prev.map(c =>
+                c.id === selectedConversation.id ? updatedConv : c
+            ));
+            // Update selected conversation
+            setSelectedConversation(updatedConv);
+        } catch (error) {
+            console.error('Error toggling star:', error);
+        }
+    };
+
+    const handleToggleRead = async () => {
+        if (!selectedConversation) return;
+
+        try {
+            const newReadState = !selectedConversation.is_read;
+            if (newReadState) {
+                await api.conversations.markAsRead(selectedConversation.id);
+            } else {
+                await api.conversations.markAsUnread(selectedConversation.id);
+            }
+
+            const updatedConv = {
+                ...selectedConversation,
+                is_read: newReadState,
+                read_at: newReadState ? new Date().toISOString() : undefined
+            };
+
+            // Update local state
+            setConversations(prev => prev.map(c =>
+                c.id === selectedConversation.id ? updatedConv : c
+            ));
+            // Update selected conversation
+            setSelectedConversation(updatedConv);
+        } catch (error) {
+            console.error('Error toggling read status:', error);
+        }
+    }; const handleStatusChange = async (status: string) => {
         if (!selectedConversation) return;
         try {
             await api.conversations.update(selectedConversation.id, { status });
@@ -463,6 +537,25 @@ export default function ConversationPage() {
                                     </span>
                                 </button>
                             ))}
+                            <button
+                                onClick={() => {
+                                    // Filter to show only starred conversations
+                                    setFilters({ ...filters, starredOnly: true });
+                                }}
+                                className={cn(
+                                    "px-3 py-2 text-xs font-medium rounded-lg transition-all duration-200 flex items-center gap-1",
+                                    filters.starredOnly
+                                        ? "bg-white text-gray-900 shadow-sm"
+                                        : "text-gray-500 hover:text-gray-700"
+                                )}
+                                title="Show starred conversations"
+                            >
+                                <Star className={cn(
+                                    "h-3 w-3",
+                                    filters.starredOnly ? "fill-yellow-400 text-yellow-400" : ""
+                                )} />
+                                Starred
+                            </button>
                         </div>
                     </div>
 
@@ -552,17 +645,33 @@ export default function ConversationPage() {
                                             {/* Content */}
                                             <div className="flex-1 min-w-0">
                                                 <div className="flex items-center justify-between gap-2">
-                                                    <span className={cn(
-                                                        "font-medium truncate text-sm",
-                                                        isSelected ? "text-gray-900" : "text-gray-700"
-                                                    )}>
-                                                        {conv.contact_name || conv.sender_display_name || conv.channel_contact_id || "Unknown"}
-                                                    </span>
+                                                    <div className="flex items-center gap-1.5 min-w-0">
+                                                        {/* Unread indicator */}
+                                                        {!conv.is_read && (
+                                                            <div className="h-2 w-2 rounded-full bg-blue-500 shrink-0" />
+                                                        )}
+                                                        <span className={cn(
+                                                            "truncate text-sm",
+                                                            !conv.is_read ? "font-bold text-gray-900" : "font-medium text-gray-700",
+                                                            isSelected && "text-gray-900"
+                                                        )}>
+                                                            {conv.contact_name || conv.sender_display_name || conv.channel_contact_id || "Unknown"}
+                                                        </span>
+                                                        {/* Forward indicator */}
+                                                        {conv.is_forwarded && (
+                                                            <span title={`Forwarded by ${conv.forwarded_by_name}`} className="shrink-0">
+                                                                <Forward className="h-3 w-3 text-blue-600" />
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                     <span className="text-[10px] text-gray-400 shrink-0 font-medium">
                                                         {conv.last_message_at ? formatTime(conv.last_message_at) : formatTime(conv.created_at)}
                                                     </span>
                                                 </div>
-                                                <p className="text-xs text-gray-400 truncate mt-1">
+                                                <p className={cn(
+                                                    "text-xs truncate mt-1",
+                                                    !conv.is_read ? "text-gray-600 font-medium" : "text-gray-400"
+                                                )}>
                                                     {conv.subject || `${conv.channel.charAt(0).toUpperCase() + conv.channel.slice(1)} conversation`}
                                                 </p>
                                                 {/* Campaign Badge */}
@@ -673,8 +782,28 @@ export default function ConversationPage() {
                                             <Forward className="h-3.5 w-3.5" />
                                             <span>Forward</span>
                                         </button>
-                                        <button className="p-2.5 hover:bg-gray-100 rounded-xl transition-all duration-200">
-                                            <Star className="h-4 w-4 text-gray-400" />
+                                        <button
+                                            onClick={handleToggleRead}
+                                            className="p-2.5 hover:bg-gray-100 rounded-xl transition-all duration-200"
+                                            title={selectedConversation?.is_read ? "Mark as unread" : "Mark as read"}
+                                        >
+                                            {selectedConversation?.is_read ? (
+                                                <MailOpen className="h-4 w-4 text-gray-600" />
+                                            ) : (
+                                                <Mail className="h-4 w-4 text-blue-600" />
+                                            )}
+                                        </button>
+                                        <button
+                                            onClick={handleToggleStar}
+                                            className="p-2.5 hover:bg-gray-100 rounded-xl transition-all duration-200"
+                                            title={selectedConversation?.is_starred ? "Unstar conversation" : "Star conversation"}
+                                        >
+                                            <Star className={cn(
+                                                "h-4 w-4",
+                                                selectedConversation?.is_starred
+                                                    ? "fill-yellow-400 text-yellow-400"
+                                                    : "text-gray-400"
+                                            )} />
                                         </button>
                                         <button
                                             onClick={() => setShowDetails(!showDetails)}
@@ -1116,3 +1245,5 @@ export default function ConversationPage() {
         </div>
     );
 }
+
+

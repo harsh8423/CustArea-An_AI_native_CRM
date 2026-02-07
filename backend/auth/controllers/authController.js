@@ -7,6 +7,11 @@ const { supabase } = require('../../config/supabase');
  */
 exports.signupWithOTP = async (req, res) => {
     const { email, companyName } = req.body;
+    const { supabaseAdmin } = require('../../config/supabase');
+    const { sendTenantEmail } = require('../../email/services/sesSendService');
+    const { getMagicLinkEmail } = require('../../email/templates/magicLinkTemplate');
+    const { sesClient } = require('../../config/ses');
+    const { SendEmailCommand } = require("@aws-sdk/client-sesv2");
 
     if (!email || !companyName) {
         return res.status(400).json({ 
@@ -22,6 +27,7 @@ exports.signupWithOTP = async (req, res) => {
         );
 
         const isExistingUser = existingUser.rows.length > 0;
+        const currentUser = isExistingUser ? existingUser.rows[0] : null;
 
         // Store company name for new signups
         if (!isExistingUser) {
@@ -37,26 +43,58 @@ exports.signupWithOTP = async (req, res) => {
             );
         }
 
-        // Send magic link via Supabase
-        if (!supabase) {
+        // Generate magic link via Supabase Admin
+        if (!supabaseAdmin) {
             return res.status(500).json({ 
-                error: 'Authentication service not configured. Please add Supabase credentials to .env' 
+                error: 'Admin authentication service not configured. Please add SUPABASE_SERVICE_ROLE_KEY to .env' 
             });
         }
 
-        const { data, error } = await supabase.auth.signInWithOtp({
+        const { data, error } = await supabaseAdmin.auth.admin.generateLink({
+            type: 'magiclink',
             email: email.toLowerCase(),
             options: {
-                shouldCreateUser: true,
-                emailRedirectTo: process.env.FRONTEND_URL || 'http://localhost:3000/login'
+                redirectTo: process.env.FRONTEND_URL || 'http://localhost:3000/login'
             }
         });
 
         if (error) {
             return res.status(500).json({ 
-                error: 'Failed to send magic link', 
+                error: 'Failed to generate magic link', 
                 details: error.message 
             });
+        }
+
+        const magicLinkUrl = data.properties.action_link;
+        const emailHtml = getMagicLinkEmail(magicLinkUrl, isExistingUser ? null : companyName); // Pass company name only for new users or generic
+        const subject = "Sign in to your account";
+
+        // Send email via SES
+        if (isExistingUser && currentUser.tenant_id) {
+            // Use tenant's configured email
+            await sendTenantEmail({
+                tenantId: currentUser.tenant_id,
+                to: email.toLowerCase(),
+                subject: subject,
+                html: emailHtml
+            });
+        } else {
+            // New user or no tenant: Use system default SES
+            // FALLBACK: If standard SES client is used directly without tenant context
+            const fromEmail = process.env.SES_FROM_EMAIL || 'noreply@custarea.com'; // Adjust default as needed
+
+            const sesParams = {
+                Destination: { ToAddresses: [email.toLowerCase()] },
+                FromEmailAddress: fromEmail,
+                Content: {
+                    Simple: {
+                        Subject: { Data: subject, Charset: "UTF-8" },
+                        Body: { Html: { Data: emailHtml, Charset: "UTF-8" } }
+                    }
+                }
+            };
+
+            await sesClient.send(new SendEmailCommand(sesParams));
         }
 
         res.json({ 
@@ -77,10 +115,11 @@ exports.signupWithOTP = async (req, res) => {
  * Complete authentication and create user/tenant if needed
  */
 exports.verifyMagicLink = async (req, res) => {
-    const { email, companyName, supabaseToken } = req.body;
+    const { email, companyName, supabaseToken, code } = req.body;
+    const { supabaseAdmin } = require('../../config/supabase');
 
-    if (!email) {
-        return res.status(400).json({ error: 'Email is required' });
+    if (!email && !code) {
+        return res.status(400).json({ error: 'Email or Code is required' });
     }
 
     try {
@@ -88,12 +127,31 @@ exports.verifyMagicLink = async (req, res) => {
             return res.status(500).json({ error: 'Authentication service not configured' });
         }
 
-        // Verify the Supabase token
-        const { data: { user: supabaseUser }, error } = await supabase.auth.getUser(supabaseToken);
+        let supabaseUser = null;
 
-        if (error || !supabaseUser) {
-            return res.status(401).json({ error: 'Invalid or expired token' });
+        if (code) {
+            // Exchange code for session via Admin client (PKCE flow)
+            if (!supabaseAdmin) {
+                return res.status(500).json({ error: 'Admin client needed for code exchange' });
+            }
+            const { data: { user, session }, error } = await supabaseAdmin.auth.exchangeCodeForSession(code);
+            
+            if (error || !user) {
+                return res.status(401).json({ error: 'Invalid verification code', details: error?.message });
+            }
+            supabaseUser = user;
+        } else if (supabaseToken) {
+            // Verify existing access token (Implicit flow)
+            const { data: { user }, error } = await supabase.auth.getUser(supabaseToken);
+            if (error || !user) {
+                return res.status(401).json({ error: 'Invalid or expired token' });
+            }
+            supabaseUser = user;
+        } else {
+            return res.status(400).json({ error: 'Missing verification token or code' });
         }
+
+        const emailToCheck = supabaseUser.email || email.toLowerCase();
 
         // Check if user exists in our database
         const existingUser = await pool.query(
@@ -214,26 +272,68 @@ exports.verifyOTPAndSignin = exports.verifyMagicLink;
  */
 exports.resendOTP = async (req, res) => {
     const { email } = req.body;
+    const { supabaseAdmin } = require('../../config/supabase');
+    const { sendTenantEmail } = require('../../email/services/sesSendService');
+    const { getMagicLinkEmail } = require('../../email/templates/magicLinkTemplate');
+    const { sesClient } = require('../../config/ses');
+    const { SendEmailCommand } = require("@aws-sdk/client-sesv2");
 
     if (!email) {
         return res.status(400).json({ error: 'Email is required' });
     }
 
     try {
-        if (!supabase) {
-            return res.status(500).json({ error: 'Authentication service not configured' });
+        if (!supabaseAdmin) {
+            return res.status(500).json({ error: 'Admin authentication service not configured' });
         }
 
-        const { data, error } = await supabase.auth.signInWithOtp({
+        // Check if user exists to determine context (tenant vs new user)
+        const existingUser = await pool.query(
+            `SELECT * FROM users WHERE email = $1`,
+            [email.toLowerCase()]
+        );
+        const isExistingUser = existingUser.rows.length > 0;
+        const currentUser = isExistingUser ? existingUser.rows[0] : null;
+
+        // Generate magic link via Supabase Admin
+        const { data, error } = await supabaseAdmin.auth.admin.generateLink({
+            type: 'magiclink',
             email: email.toLowerCase(),
             options: { 
-                shouldCreateUser: true,
-                emailRedirectTo: process.env.FRONTEND_URL || 'http://localhost:3000/login'
+                redirectTo: process.env.FRONTEND_URL || 'http://localhost:3000/login'
             }
         });
 
         if (error) {
             return res.status(500).json({ error: 'Failed to resend link', details: error.message });
+        }
+
+        const magicLinkUrl = data.properties.action_link;
+        const emailHtml = getMagicLinkEmail(magicLinkUrl); // Helper handles default site name
+        const subject = "Sign in to your account";
+
+        // Send email via SES
+        if (isExistingUser && currentUser.tenant_id) {
+            await sendTenantEmail({
+                tenantId: currentUser.tenant_id,
+                to: email.toLowerCase(),
+                subject: subject,
+                html: emailHtml
+            });
+        } else {
+             // New user or no tenant: Use system default SES
+            const fromEmail = process.env.SES_FROM_EMAIL || 'noreply@custarea.com';
+            const sesParams = {
+                Destination: { ToAddresses: [email.toLowerCase()] },
+                FromEmailAddress: fromEmail,
+                Content: {
+                    Simple: {
+                        Subject: { Data: subject, Charset: "UTF-8" },
+                        Body: { Html: { Data: emailHtml, Charset: "UTF-8" } }
+                    }
+                }
+            };
+            await sesClient.send(new SendEmailCommand(sesParams));
         }
 
         res.json({ message: 'Verification link resent to your email' });

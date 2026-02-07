@@ -2,13 +2,17 @@ const express = require('express');
 const router = express.Router();
 const authenticateToken = require('../../middleware/authMiddleware');
 const { requirePermission } = require('../../middleware/permissionMiddleware');
+const { requireDomainOwnership, checkDomainOwnershipIfExists } = require('../../middleware/domainOwnershipMiddleware');
 const {
     // Multi-provider operations
     sendEmailMultiProvider,
     getInboundEmailsMulti,
     getEmailConnections,
     setDefaultConnection,
-    // Legacy SES operations
+    // Domain ownership workflow (NEW)
+    claimDomain,
+    verifyDomainOwnership,
+    // Legacy SES operations (now with ownership checks)
     createDomainIdentity,
     getIdentities,
     checkIdentityStatus,
@@ -33,10 +37,34 @@ router.get('/inbound-multi', requirePermission('email.access'), getInboundEmails
 router.get('/connections', requirePermission('settings.view'), getEmailConnections);
 router.post('/connections/:id/set-default', requirePermission('settings.edit'), setDefaultConnection);
 
+// ===== DOMAIN OWNERSHIP VERIFICATION WORKFLOW (Admin only) =====
+// Step 1: Claim domain with DNS challenge
+router.post('/identities/claim-domain', 
+    requirePermission('settings.edit'),
+    checkDomainOwnershipIfExists,  // Prevent claiming already-owned domains
+    claimDomain
+);
+
+// Step 2: Verify DNS ownership
+router.post('/identities/verify-ownership', 
+    requirePermission('settings.edit'),
+    verifyDomainOwnership
+);
+
+// Step 3: Complete SES configuration (requires verified ownership)
+router.post('/identities/domain', 
+    requirePermission('settings.edit'),
+    requireDomainOwnership,  // ✅ NEW: Enforce ownership before SES creation
+    createDomainIdentity
+);
+
 // ===== SES IDENTITY MANAGEMENT (Admin only) =====
 router.get('/identities', requirePermission('settings.view'), getIdentities);
-router.post('/identities/domain', requirePermission('settings.edit'), createDomainIdentity);
-router.get('/identities/:id/status', requirePermission('settings.view'), checkIdentityStatus);
+router.get('/identities/:id/status', 
+    requirePermission('settings.view'),
+    requireDomainOwnership,  // ✅ NEW: Prevent status checks on unowned domains
+    checkIdentityStatus
+);
 
 // ===== ALLOWED FROM EMAILS - Outbound Senders (Admin only) =====
 router.get('/allowed-from', requirePermission('settings.view'), getAllowedFrom);

@@ -18,6 +18,7 @@ const {
     pauseCampaign,
     resumeCampaign,
     generateTemplates,
+    generateTemplatesPreview,
     getTemplates,
     createTemplate,
     updateTemplate,
@@ -45,6 +46,7 @@ router.post('/:id/pause', requirePermission('campaigns.edit'), pauseCampaign);
 router.post('/:id/resume', requirePermission('campaigns.edit'), resumeCampaign);
 
 // Template management
+router.post('/preview/templates', requirePermission('campaigns.create'), generateTemplatesPreview); // NEW: Preview without campaign
 router.post('/:id/templates/generate', requirePermission('campaigns.edit'), generateTemplates);
 router.get('/:id/templates', requirePermission('campaigns.view'), getTemplates);
 router.post('/:id/templates', requirePermission('campaigns.edit'), createTemplate);

@@ -22,9 +22,12 @@ export function GrantChannelAccessDialog({ userId, currentAccess, onClose, onSuc
     const [selectedInbound, setSelectedInbound] = useState<string[]>(
         currentAccess.inbound_emails.map(e => e.id)
     );
-    const [selectedOutbound, setSelectedOutbound] = useState<string[]>(
-        currentAccess.outbound_emails.map(e => e.id)
-    );
+    const [selectedOutbound, setSelectedOutbound] = useState<string[]>(() => {
+        const ids = currentAccess.outbound_emails.map(e => e.id);
+        console.log('Initial selected outbound IDs:', ids);
+        console.log('Current access outbound emails:', currentAccess.outbound_emails);
+        return ids;
+    });
     const [selectedPhones, setSelectedPhones] = useState<string[]>(
         currentAccess.phone_numbers.map(p => p.id)
     );
@@ -47,6 +50,8 @@ export function GrantChannelAccessDialog({ userId, currentAccess, onClose, onSuc
 
             // Fetch available outbound emails
             const outboundData = await rbacApi.channels.getOutboundEmails();
+            console.log('Available outbound emails:', outboundData.outbound_emails);
+            console.log('Available outbound IDs:', outboundData.outbound_emails?.map((e: any) => ({ id: e.id, email: e.email_address })));
             setAvailableOutbound(outboundData.outbound_emails || []);
 
             // Fetch available phones
@@ -64,15 +69,26 @@ export function GrantChannelAccessDialog({ userId, currentAccess, onClose, onSuc
             setSaving(true);
 
             // Build outbound email configs
-            const outboundEmailConfigs = selectedOutbound.map(id => {
-                const email = availableOutbound.find(e => e.id === id);
-                return {
-                    email_type: email.type || 'connection',
-                    email_connection_id: email.connection_id || null,
-                    ses_identity_id: email.ses_identity_id || null,
-                    allowed_from_email_id: email.allowed_from_email_id || id
-                };
-            });
+            const outboundEmailConfigs = selectedOutbound
+                .map(id => {
+                    const email = availableOutbound.find(e => e.id === id);
+                    if (!email) {
+                        console.warn(`Email with id ${id} not found in available emails`);
+                        return null;
+                    }
+
+                    // Determine email_type based on which ID is present
+                    const isConnection = !!email.email_connection_id;
+                    const isIdentity = !!email.ses_identity_id;
+
+                    return {
+                        email_type: (isConnection ? 'connection' : 'identity') as 'connection' | 'identity',
+                        email_connection_id: email.email_connection_id || null,
+                        ses_identity_id: email.ses_identity_id || null,
+                        allowed_from_email_id: email.allowed_from_email_id || null
+                    };
+                })
+                .filter(config => config !== null); // Remove null entries
 
             await rbacApi.users.grantChannelAccess(userId, {
                 inboundEmailIds: selectedInbound,
@@ -84,8 +100,8 @@ export function GrantChannelAccessDialog({ userId, currentAccess, onClose, onSuc
             onSuccess();
             onClose();
         } catch (err: any) {
-            console.error('Failed to grant channel access:', err);
-            alert(`Failed to grant channel access: ${err.message || 'Unknown error'}`);
+            console.error('Failed to update channel access:', err);
+            alert(`Failed to update channel access: ${err.message || 'Unknown error'}`);
         } finally {
             setSaving(false);
         }
@@ -125,15 +141,15 @@ export function GrantChannelAccessDialog({ userId, currentAccess, onClose, onSuc
     return (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
             <div className="bg-white rounded-xl shadow-2xl p-6 max-w-2xl w-full mx-4 max-h-[90vh] flex flex-col">
-                <h2 className="text-2xl font-bold text-gray-900 mb-4">Grant Channel Access</h2>
+                <h2 className="text-2xl font-bold text-gray-900 mb-4">Manage Channel Access</h2>
 
                 {/* Tabs */}
                 <div className="flex gap-2 mb-4 border-b">
                     <button
                         onClick={() => setActiveTab('outbound')}
                         className={`px-4 py-2 font-medium transition-colors ${activeTab === 'outbound'
-                                ? 'text-blue-600 border-b-2 border-blue-600'
-                                : 'text-gray-600 hover:text-gray-900'
+                            ? 'text-blue-600 border-b-2 border-blue-600'
+                            : 'text-gray-600 hover:text-gray-900'
                             }`}
                     >
                         Outbound Emails ({selectedOutbound.length})
@@ -141,8 +157,8 @@ export function GrantChannelAccessDialog({ userId, currentAccess, onClose, onSuc
                     <button
                         onClick={() => setActiveTab('inbound')}
                         className={`px-4 py-2 font-medium transition-colors ${activeTab === 'inbound'
-                                ? 'text-blue-600 border-b-2 border-blue-600'
-                                : 'text-gray-600 hover:text-gray-900'
+                            ? 'text-blue-600 border-b-2 border-blue-600'
+                            : 'text-gray-600 hover:text-gray-900'
                             }`}
                     >
                         Inbound Emails ({selectedInbound.length})
@@ -150,8 +166,8 @@ export function GrantChannelAccessDialog({ userId, currentAccess, onClose, onSuc
                     <button
                         onClick={() => setActiveTab('phone')}
                         className={`px-4 py-2 font-medium transition-colors ${activeTab === 'phone'
-                                ? 'text-blue-600 border-b-2 border-blue-600'
-                                : 'text-gray-600 hover:text-gray-900'
+                            ? 'text-blue-600 border-b-2 border-blue-600'
+                            : 'text-gray-600 hover:text-gray-900'
                             }`}
                     >
                         Phone Numbers ({selectedPhones.length})
@@ -260,7 +276,7 @@ export function GrantChannelAccessDialog({ userId, currentAccess, onClose, onSuc
                                 Saving...
                             </>
                         ) : (
-                            'Grant Access'
+                            'Save Changes'
                         )}
                     </button>
                 </div>

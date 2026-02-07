@@ -45,6 +45,8 @@ interface CampaignAnalytics {
     skipped_no_email: number;
     pending: number;
     completed: number;
+    total_sent_by_ai: number;
+    total_sent_by_human: number;
 }
 
 export const campaignApi = {
@@ -130,6 +132,19 @@ export const campaignApi = {
     },
 
     // Templates
+    async generateTemplatesPreview(campaignData: Partial<Campaign>, followUpCount: number = 2) {
+        const token = localStorage.getItem("token");
+        const res = await fetch(`${API_BASE_URL}/campaigns/preview/templates`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`
+            },
+            body: JSON.stringify({ campaignData, followUpCount })
+        });
+        return res.json();
+    },
+
     async generateTemplates(id: string, followUpCount: number = 2) {
         const token = localStorage.getItem("token");
         const res = await fetch(`${API_BASE_URL}/campaigns/${id}/templates/generate`, {

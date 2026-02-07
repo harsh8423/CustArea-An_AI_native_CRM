@@ -154,7 +154,7 @@ async function processJob(job) {
             
             try {
                 // Send email
-                await sendEmailWithRetry({
+                const result = await sendEmailWithRetry({
                     from: fromEmail,
                     to: contact.email,
                     subject,
@@ -164,6 +164,27 @@ async function processJob(job) {
                 }, providerInfo, tenantId);
                 
                 results.sent++;
+                
+                // --- ANALYTICS LOGGING START ---
+                // Log to messages table to trigger analytics (counts as Human/Agent)
+                try {
+                    await logBulkEmailToHistory(
+                        pool, 
+                        tenantId, 
+                        contact.id, 
+                        subject, 
+                        bodyText || bodyHtml, 
+                        bodyHtml,
+                        result.messageId || result.providerMessageId,
+                        providerType,
+                        jobId
+                    );
+                } catch (logErr) {
+                    console.error(`⚠️ [JobProcessor] Failed to log email to history for ${contact.email}:`, logErr.message);
+                    // Don't fail the job, just log the error
+                }
+                // --- ANALYTICS LOGGING END ---
+
                 console.log(`✅ [JobProcessor] Sent ${i + 1}/${contacts.length} to ${contact.email}`);
                 
             } catch (error) {
@@ -329,6 +350,58 @@ async function updateJobProgress(jobId, fields) {
  */
 function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * Helper: Log bulk email to history (conversations & messages)
+ * Triggers analytics via database triggers
+ */
+async function logBulkEmailToHistory(pool, tenantId, contactId, subject, text, html, messageId, provider, jobId) {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        // 1. Create Conversation (treat each bulk blast as a new conversation context for now)
+        // We link it to the bulk job via metadata
+        const convResult = await client.query(`
+            INSERT INTO conversations (
+                tenant_id, contact_id, channel, status, subject, 
+                metadata, created_at, updated_at
+            ) VALUES ($1, $2, 'email', 'open', $3, $4, NOW(), NOW())
+            RETURNING id
+        `, [
+            tenantId, 
+            contactId, 
+            subject,
+            JSON.stringify({ source: 'bulk_email', jobId: jobId })
+        ]);
+        
+        const conversationId = convResult.rows[0].id;
+
+        // 2. Insert Message
+        // role='agent' ensures it is counted as human sent by the analytics trigger
+        await client.query(`
+            INSERT INTO messages (
+                tenant_id, conversation_id, direction, role, channel,
+                content_text, content_html, provider, provider_message_id, 
+                status, sent_at, created_at
+            ) VALUES ($1, $2, 'outbound', 'agent', 'email', $3, $4, $5, $6, 'sent', NOW(), NOW())
+        `, [
+            tenantId,
+            conversationId,
+            text,
+            html,
+            provider,
+            messageId || `bulk-${Date.now()}` // Fallback ID if provider doesn't return one
+        ]);
+
+        await client.query('COMMIT');
+    } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+    } finally {
+        client.release();
+    }
 }
 
 module.exports = {

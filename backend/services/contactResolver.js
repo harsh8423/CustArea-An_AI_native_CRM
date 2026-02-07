@@ -61,11 +61,12 @@ async function findContact(tenantId, identifiers = {}) {
  * @param {string} metadata.name - Contact name
  * @param {string} metadata.source - Source channel
  * @param {string} metadata.companyName - Company name
+ * @param {string} metadata.createdBy - User ID who created this contact
  * @returns {Object} created contact
  */
 async function createContact(tenantId, identifiers = {}, metadata = {}) {
     const { email, phone, visitorId } = identifiers;
-    const { name, source, companyName } = metadata;
+    const { name, source, companyName, createdBy } = metadata;
 
     const normalizedEmail = email ? email.toLowerCase().trim() : null;
     const normalizedPhone = phone ? normalizePhone(phone) : null;
@@ -76,10 +77,10 @@ async function createContact(tenantId, identifiers = {}, metadata = {}) {
         await client.query('BEGIN');
 
         const insertResult = await client.query(
-            `INSERT INTO contacts (tenant_id, name, email, phone, source, company_name)
-             VALUES ($1, $2, $3, $4, $5, $6)
+            `INSERT INTO contacts (tenant_id, name, email, phone, source, company_name, created_by)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)
              RETURNING *`,
-            [tenantId, name || null, normalizedEmail, normalizedPhone, source || 'manual', companyName || null]
+            [tenantId, name || null, normalizedEmail, normalizedPhone, source || 'manual', companyName || null, createdBy || null]
         );
         const contact = insertResult.rows[0];
 

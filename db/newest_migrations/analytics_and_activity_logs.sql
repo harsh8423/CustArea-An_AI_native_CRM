@@ -593,10 +593,10 @@ BEGIN
             NEW.created_by,
             'campaign',
             'created',
-            'Campaign: ' || COALESCE(NEW.campaign_name, 'Unnamed'),
+            'Campaign: ' || COALESCE(NEW.name, 'Unnamed'),
             'campaign',
             NEW.id,
-            NEW.campaign_name
+            NEW.name
         );
     ELSIF TG_OP = 'UPDATE' THEN
         -- Check if status changed to active (launched)
@@ -608,10 +608,10 @@ BEGIN
                 NEW.created_by,
                 'campaign',
                 'launched',
-                'Launched: ' || COALESCE(NEW.campaign_name, 'Unnamed'),
+                'Launched: ' || COALESCE(NEW.name, 'Unnamed'),
                 'campaign',
                 NEW.id,
-                NEW.campaign_name
+                NEW.name
             );
         END IF;
         
@@ -624,10 +624,10 @@ BEGIN
                 NEW.created_by,
                 'campaign',
                 'paused',
-                'Paused: ' || COALESCE(NEW.campaign_name, 'Unnamed'),
+                'Paused: ' || COALESCE(NEW.name, 'Unnamed'),
                 'campaign',
                 NEW.id,
-                NEW.campaign_name
+                NEW.name
             );
         END IF;
     END IF;

@@ -6,7 +6,7 @@
 const twilio = require('twilio');
 const { pool } = require('../../config/db');
 const callSessionManager = require('../services/callSessionManager');
-const { getCallsForTenant, getCallBySid, persistMissedCall } = require('../services/phoneStorageService');
+const { getCallsForTenant, getCallBySid, persistMissedCall, persistCallToDatabase } = require('../services/phoneStorageService');
 const { findOrCreateContact } = require('../../services/contactResolver');
 const { shouldAgentRespond } = require('../../services/aiAgentDecisionService');
 
@@ -51,13 +51,34 @@ async function initiateCall(req, res) {
             'outbound',
             twilioConfig.phoneNumber,  // fromNumber
             to,                         // toNumber
-            customInstruction           // customInstruction (new parameter)
+            customInstruction,          // customInstruction (new parameter)
+            req.user.id                 // User initiating the call
         );
 
         // Generate WebSocket URL (always realtime)
         const host = process.env.HOST || 'localhost:8000';
         const wsPath = `/phone-ws/realtime/${session.id}`;
         const wsUrl = `wss://${host}${wsPath}`;
+
+        // Construct AI Config for logging
+        const aiConfig = {
+             ai_provider: 'openai',
+             ai_model: 'gpt-4o-realtime-preview', // Current default for realtime
+             ai_voice_id: 'alloy', // Default realtime voice
+             latency_mode: 'realtime'
+        };
+        
+        // If legacy, we would have different defaults
+        if (method === 'legacy') {
+            aiConfig.latency_mode = 'legacy';
+            aiConfig.tts_provider = 'google'; // Based on TwiML below
+            aiConfig.stt_provider = 'azure'; // Legacy stack
+            aiConfig.ai_provider = 'openai'; // Legacy LLM
+            aiConfig.ai_voice_id = twilioConfig.voiceModel || 'en-US-Neural2-F';
+        }
+
+        // Update session with AI config
+        session.aiConfig = aiConfig;
 
         // Generate TwiML - Standard Stream for both legacy and realtime
         const greetingText = greeting || 'Hello, please hold while we connect you.';
@@ -193,7 +214,15 @@ async function routeToAI(req, res, tenant, contact, From, To, CallSid) {
         method, 
         'inbound',
         From,  // fromNumber
-        To     // toNumber
+        To,    // toNumber
+        null,  // customInstruction
+        null,  // userId (inbound)
+        {      // AI Config
+            ai_provider: 'openai',
+            ai_model: 'gpt-4o-realtime-preview',
+            ai_voice_id: 'alloy',
+            latency_mode: 'realtime'
+        }
     );
     callSessionManager.linkCallSid(session.id, CallSid);
 
@@ -261,13 +290,30 @@ async function handleStatusCallback(req, res) {
 
     console.log(`[Phone] Status callback: ${CallSid} - ${CallStatus}`);
 
-    if (CallStatus === 'completed' || CallStatus === 'failed' || CallStatus === 'canceled') {
+    if (CallStatus === 'completed' || CallStatus === 'failed' || CallStatus === 'canceled' || CallStatus === 'no-answer' || CallStatus === 'busy') {
         const session = callSessionManager.getByCallSid(CallSid);
+        
+        // If we have a session, persist it
         if (session) {
+            console.log(`[Phone] Ending session ${session.id} for call ${CallSid}`);
             callSessionManager.end(session.id);
 
-            // TODO: Save call record to database
-            // await saveCallRecord(session, CallDuration);
+            // Persist call record to database
+            try {
+                // If CallDuration is available from Twilio, use it to update session duration
+                if (CallDuration) {
+                    session.duration = parseInt(CallDuration);
+                }
+                
+                await persistCallToDatabase(session);
+                console.log(`[Phone] Call record saved for ${CallSid}`);
+            } catch (err) {
+                console.error(`[Phone] Failed to save call record:`, err);
+            }
+        } else {
+            // Case: Call completed but session not found (maybe already cleaned up or direct call)
+            // For now, we only handle session-based calls
+            console.warn(`[Phone] Session not found for completed call ${CallSid}`);
         }
     }
 
@@ -316,9 +362,15 @@ async function getCallHistory(req, res) {
 
         // Build query with RBAC filtering
         let query = `
-            SELECT pc.*, c.name as contact_name, c.email as contact_email, c.phone as contact_phone
+            SELECT pc.*, 
+                   c.name as contact_name, 
+                   c.email as contact_email, 
+                   c.phone as contact_phone,
+                   u.name as user_name
             FROM phone_calls pc
-            LEFT JOIN contacts c ON c.id = pc.contact_id
+            LEFT JOIN conversations conv ON pc.conversation_id = conv.id
+            LEFT JOIN contacts c ON conv.contact_id = c.id
+            LEFT JOIN users u ON pc.user_id = u.id
             WHERE pc.tenant_id = $1
         `;
         
@@ -347,6 +399,18 @@ async function getCallHistory(req, res) {
             paramCount++;
             query += ` AND pc.direction = $${paramCount}`;
             params.push(direction);
+        }
+
+        if (req.query.startDate) {
+            paramCount++;
+            query += ` AND pc.created_at >= $${paramCount}`;
+            params.push(req.query.startDate);
+        }
+
+        if (req.query.endDate) {
+            paramCount++;
+            query += ` AND pc.created_at <= $${paramCount}`;
+            params.push(req.query.endDate);
         }
 
         query += ` ORDER BY pc.created_at DESC LIMIT $${paramCount + 1} OFFSET $${paramCount + 2}`;
@@ -445,7 +509,7 @@ async function getTwilioConfig(tenantId) {
 
     // Query tenant_phone_config for phone number and voice settings
     const result = await pool.query(
-        `SELECT phone_number, default_method 
+        `SELECT phone_number, default_method, voice_model 
          FROM tenant_phone_config 
          WHERE tenant_id = $1 AND is_active = true 
          LIMIT 1`,
@@ -457,7 +521,8 @@ async function getTwilioConfig(tenantId) {
             accountSid,
             authToken,
             phoneNumber: result.rows[0].phone_number,
-            method: result.rows[0].default_method || 'realtime'
+            method: result.rows[0].default_method || 'realtime',
+            voiceModel: result.rows[0].voice_model
         };
     }
 

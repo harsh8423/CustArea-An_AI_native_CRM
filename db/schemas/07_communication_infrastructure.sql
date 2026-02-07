@@ -181,7 +181,8 @@ DROP TABLE IF EXISTS tenant_phone_config CASCADE;
 -- Recreate with new structure
 CREATE TABLE tenant_phone_config (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE UNIQUE,
+    tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    assigned_user_id uuid REFERENCES users(id) ON DELETE SET NULL,
     
     -- Phone number (assigned by admin)
     phone_number text NOT NULL UNIQUE,

@@ -2,30 +2,24 @@
 
 import { useState, useEffect, useRef } from 'react';
 import {
-    Bot, Send, Loader2, RefreshCw, BookOpen, AlertTriangle,
-    CheckCircle, XCircle, Info, Play, Square, Trash2, Phone, PhoneOff, PhoneCall
+    Bot, Send, Loader2, MessageSquare, Mail, Phone, MessageCircle,
+    User, AlertTriangle, Info, BookOpen, Trash2, Zap
 } from 'lucide-react';
 
+// Helper to format tool names nicely
+function formatToolName(name: string): string {
+    return name
+        .replace(/([A-Z])/g, ' $1') // Add space before capitals
+        .replace(/^./, str => str.toUpperCase()) // Capitalize first letter
+        .replace(/_/g, ' ') // Replace underscores
+        .trim();
+}
+
 const API_BASE = 'http://localhost:8000/api/ai-agent';
-const PHONE_API = 'http://localhost:8000/api/phone';
 
 async function fetchAPI(endpoint: string, options: RequestInit = {}) {
     const token = localStorage.getItem('token');
     const res = await fetch(`${API_BASE}${endpoint}`, {
-        ...options,
-        headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`,
-            ...options.headers,
-        },
-    });
-    if (!res.ok) throw new Error(`API error: ${res.status}`);
-    return res.json();
-}
-
-async function phoneAPI(endpoint: string, options: RequestInit = {}) {
-    const token = localStorage.getItem('token');
-    const res = await fetch(`${PHONE_API}${endpoint}`, {
         ...options,
         headers: {
             'Content-Type': 'application/json',
@@ -45,61 +39,23 @@ interface Message {
     error?: boolean;
 }
 
+const CHANNELS = [
+    { id: 'chat', label: 'Chat', icon: MessageSquare, color: 'emerald', instruction: '' },
+    { id: 'email', label: 'Email', icon: Mail, color: 'blue', instruction: 'Format your response as a professional email reply. Include a subject line if starting a new topic.' },
+    { id: 'phone', label: 'Phone', icon: Phone, color: 'purple', instruction: 'This is a voice conversation. Keep your responses concise, conversational, and avoid markdown formatting. Do not use lists or complex structures that are hard to read aloud.' },
+    { id: 'whatsapp', label: 'WhatsApp', icon: MessageCircle, color: 'green', instruction: 'This is a WhatsApp message. Keep it casual, friendly, and concise. Emojis are encouraged.' },
+];
+
 export default function TestPage() {
     const [messages, setMessages] = useState<Message[]>([]);
     const [input, setInput] = useState('');
     const [loading, setLoading] = useState(false);
-    const [agent, setAgent] = useState<any>(null);
-    const [status, setStatus] = useState<any>(null);
+    const [activeChannel, setActiveChannel] = useState('chat');
     const messagesEndRef = useRef<HTMLDivElement>(null);
-
-    // Phone dialer state
-    const [phoneNumber, setPhoneNumber] = useState('');
-    const [callMethod, setCallMethod] = useState<'realtime' | 'legacy' | 'convrelay'>('realtime');
-    const [callStatus, setCallStatus] = useState<'idle' | 'calling' | 'active' | 'ended'>('idle');
-    const [currentCallSid, setCurrentCallSid] = useState<string | null>(null);
-    const [callDuration, setCallDuration] = useState(0);
-    const callTimerRef = useRef<NodeJS.Timeout | null>(null);
-
-    useEffect(() => {
-        loadAgent();
-    }, []);
 
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages]);
-
-    // Call duration timer
-    useEffect(() => {
-        if (callStatus === 'active') {
-            callTimerRef.current = setInterval(() => {
-                setCallDuration(d => d + 1);
-            }, 1000);
-        } else {
-            if (callTimerRef.current) {
-                clearInterval(callTimerRef.current);
-            }
-            if (callStatus === 'idle') {
-                setCallDuration(0);
-            }
-        }
-        return () => {
-            if (callTimerRef.current) clearInterval(callTimerRef.current);
-        };
-    }, [callStatus]);
-
-    async function loadAgent() {
-        try {
-            const [agentData, statusData] = await Promise.all([
-                fetchAPI('/'),
-                fetchAPI('/status')
-            ]);
-            setAgent(agentData);
-            setStatus(statusData);
-        } catch (err) {
-            console.error('Failed to load:', err);
-        }
-    }
 
     async function sendMessage() {
         if (!input.trim() || loading) return;
@@ -109,12 +65,16 @@ export default function TestPage() {
         setMessages(prev => [...prev, { role: 'user', content: userMessage }]);
         setLoading(true);
 
+        const channelConfig = CHANNELS.find(c => c.id === activeChannel);
+
         try {
             const result = await fetchAPI('/chat', {
                 method: 'POST',
                 body: JSON.stringify({
                     message: userMessage,
-                    history: messages.map(m => ({ role: m.role, content: m.content }))
+                    history: messages.map(m => ({ role: m.role, content: m.content })),
+                    channel: activeChannel,
+                    instruction: channelConfig?.instruction
                 })
             });
 
@@ -139,301 +99,157 @@ export default function TestPage() {
         setMessages([]);
     }
 
-    // Phone functions
-    async function initiateCall() {
-        if (!phoneNumber.trim()) {
-            alert('Please enter a phone number');
-            return;
-        }
-
-        setCallStatus('calling');
-        try {
-            const result = await phoneAPI('/call', {
-                method: 'POST',
-                body: JSON.stringify({
-                    to: phoneNumber,
-                    method: callMethod
-                })
-            });
-            setCurrentCallSid(result.callSid);
-            setCallStatus('active');
-        } catch (err) {
-            console.error('Call failed:', err);
-            setCallStatus('idle');
-            alert('Failed to initiate call');
-        }
-    }
-
-    async function endCall() {
-        if (!currentCallSid) return;
-
-        try {
-            await phoneAPI(`/calls/${currentCallSid}/end`, { method: 'POST' });
-        } catch (err) {
-            console.error('Failed to end call:', err);
-        }
-        setCallStatus('ended');
-        setTimeout(() => {
-            setCallStatus('idle');
-            setCurrentCallSid(null);
-        }, 2000);
-    }
-
-    function formatDuration(seconds: number) {
-        const mins = Math.floor(seconds / 60);
-        const secs = seconds % 60;
-        return `${mins}:${secs.toString().padStart(2, '0')}`;
-    }
+    const currentChannel = CHANNELS.find(c => c.id === activeChannel);
 
     return (
-        <div className="h-full flex flex-col bg-[#eff0eb] p-4">
-            {/* Header */}
-            <div className="bg-white rounded-2xl shadow-sm p-4 mb-4">
-                <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center">
-                            <Play className="w-5 h-5 text-white" />
-                        </div>
-                        <div>
-                            <h1 className="text-lg font-semibold text-gray-900">Test Playground</h1>
-                            <p className="text-xs text-gray-500">Test your AI agent's responses in real-time</p>
-                        </div>
+        <div className="h-full bg-[#eff0eb] p-4">
+            <div className="h-full bg-gradient-to-br from-white/90 to-white/70 backdrop-blur-xl rounded-3xl shadow-lg overflow-hidden flex flex-col">
+
+                {/* Header */}
+                <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+                    <div>
+                        <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                            <Bot className="w-6 h-6 text-emerald-500" />
+                            Test Playground
+                        </h1>
+                        <p className="text-sm text-gray-500">Simulate interactions across different channels</p>
                     </div>
-                    <div className="flex items-center gap-3">
-                        <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium ${agent?.isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
-                            }`}>
-                            <span className={`w-2 h-2 rounded-full ${agent?.isActive ? 'bg-green-500' : 'bg-gray-400'}`} />
-                            {agent?.isActive ? 'Agent Active' : 'Agent Inactive'}
+                    <button
+                        onClick={clearChat}
+                        className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
+                        title="Clear Chat"
+                    >
+                        <Trash2 className="w-5 h-5" />
+                    </button>
+                </div>
+
+                {/* Channel Tabs */}
+                <div className="px-6 pt-4 pb-2">
+                    <div className="flex p-1 bg-gray-100/80 rounded-xl">
+                        {CHANNELS.map(channel => (
+                            <button
+                                key={channel.id}
+                                onClick={() => setActiveChannel(channel.id)}
+                                className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-medium rounded-lg transition-all ${activeChannel === channel.id
+                                    ? 'bg-white text-gray-900 shadow-sm'
+                                    : 'text-gray-500 hover:text-gray-700'
+                                    }`}
+                            >
+                                <channel.icon className={`w-4 h-4 ${activeChannel === channel.id ? `text-${channel.color}-500` : ''
+                                    }`} />
+                                {channel.label}
+                            </button>
+                        ))}
+                    </div>
+                    <div className="mt-2 px-1">
+                        <p className="text-xs text-center text-gray-400">
+                            {currentChannel?.instruction ? `Context: "${currentChannel.instruction}"` : 'Standard chat mode'}
+                        </p>
+                    </div>
+                </div>
+
+                {/* Chat Area */}
+                <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                    {messages.length === 0 && (
+                        <div className="h-full flex flex-col items-center justify-center text-center opacity-50">
+                            <div className={`w-16 h-16 rounded-2xl bg-${currentChannel?.color}-100 flex items-center justify-center mb-4`}>
+                                {currentChannel && <currentChannel.icon className={`w-8 h-8 text-${currentChannel.color}-500`} />}
+                            </div>
+                            <h3 className="text-lg font-semibold text-gray-900">Start Testing {currentChannel?.label}</h3>
+                            <p className="text-sm text-gray-500 max-w-xs mx-auto mt-1">
+                                Send a message to see how your agent responds in this channel context.
+                            </p>
                         </div>
+                    )}
+
+                    {messages.map((msg, i) => (
+                        <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                            <div className={`max-w-[85%] ${msg.role === 'user' ? 'bg-gray-900 text-white' : 'bg-white border border-gray-100 shadow-sm'} rounded-2xl px-5 py-4`}>
+                                <div className="flex items-center gap-2 mb-1 opacity-50 text-[10px] uppercase tracking-wider font-semibold">
+                                    {msg.role === 'user' ? (
+                                        <>
+                                            <span>You</span>
+                                            <User className="w-3 h-3" />
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Bot className="w-3 h-3" />
+                                            <span>Agent</span>
+                                        </>
+                                    )}
+                                </div>
+                                <div className="whitespace-pre-wrap text-sm leading-relaxed">
+                                    {msg.content}
+                                </div>
+
+                                {msg.role === 'assistant' && !msg.error && msg.metadata && (
+                                    <div className="mt-3 pt-3 border-t border-gray-100 flex flex-wrap gap-2">
+                                        {msg.metadata.knowledgeUsed && (
+                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-50 text-blue-600 rounded text-[10px] font-medium">
+                                                <BookOpen className="w-3 h-3" />
+                                                Knowledge Used
+                                            </span>
+                                        )}
+                                        {msg.metadata.guardrailTriggered && (
+                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-red-50 text-red-600 rounded text-[10px] font-medium">
+                                                <AlertTriangle className="w-3 h-3" />
+                                                Guardrail: {msg.metadata.guardrail}
+                                            </span>
+                                        )}
+                                        {msg.metadata.escalate && (
+                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-rose-50 text-rose-600 rounded text-[10px] font-medium">
+                                                <AlertTriangle className="w-3 h-3" />
+                                                Escalated to {msg.metadata.targetTeam}
+                                            </span>
+                                        )}
+                                        {msg.metadata.toolsUsed && msg.metadata.toolsUsed.map((tool: string, idx: number) => (
+                                            <span key={idx} className="inline-flex items-center gap-1 px-2 py-0.5 bg-purple-50 text-purple-600 rounded text-[10px] font-medium">
+                                                <Zap className="w-3 h-3" />
+                                                Action: {formatToolName(tool)}
+                                            </span>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    ))}
+
+                    {loading && (
+                        <div className="flex justify-start">
+                            <div className="bg-white border border-gray-100 shadow-sm rounded-2xl px-5 py-4 flex items-center gap-3">
+                                <Loader2 className="w-4 h-4 animate-spin text-emerald-500" />
+                                <span className="text-sm text-gray-500">Agent is thinking...</span>
+                            </div>
+                        </div>
+                    )}
+                    <div ref={messagesEndRef} />
+                </div>
+
+                {/* Input Area */}
+                <div className="p-6 bg-white border-t border-gray-100">
+                    <div className="flex gap-3">
+                        <input
+                            type="text"
+                            value={input}
+                            onChange={(e) => setInput(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage()}
+                            placeholder={`Message as ${currentChannel?.label}...`}
+                            className="flex-1 px-4 py-3 bg-gray-50 text-gray-900 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:bg-white transition-all placeholder:text-gray-400"
+                            disabled={loading}
+                        />
                         <button
-                            onClick={clearChat}
-                            className="flex items-center gap-2 px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-sm hover:bg-gray-200 transition-colors"
+                            onClick={sendMessage}
+                            disabled={loading || !input.trim()}
+                            className={`px-5 py-3 rounded-xl text-white shadow-lg shadow-${currentChannel?.color}-500/20 transition-all ${loading || !input.trim()
+                                ? 'bg-gray-200 cursor-not-allowed text-gray-400 shadow-none'
+                                : `bg-gradient-to-r from-${currentChannel?.color}-500 to-${currentChannel?.color}-600 hover:scale-[1.02] active:scale-[0.98]`
+                                }`}
                         >
-                            <Trash2 className="w-4 h-4" />
-                            Clear
+                            <Send className="w-5 h-5" />
                         </button>
                     </div>
                 </div>
-            </div>
 
-            {/* Chat Area */}
-            <div className="flex-1 flex gap-4">
-                {/* Messages */}
-                <div className="flex-1 bg-white rounded-2xl shadow-sm flex flex-col overflow-hidden">
-                    <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                        {messages.length === 0 && (
-                            <div className="text-center py-20">
-                                <Bot className="w-16 h-16 mx-auto mb-4 text-gray-200" />
-                                <h3 className="text-lg font-medium text-gray-900 mb-2">Start Testing</h3>
-                                <p className="text-gray-500 text-sm max-w-md mx-auto">
-                                    Send a message to test how your AI agent responds. You'll see detected attributes,
-                                    knowledge sources used, and other metadata.
-                                </p>
-                            </div>
-                        )}
-                        {messages.map((msg, i) => (
-                            <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                                <div className={`max-w-[80%] ${msg.role === 'user' ? '' : ''}`}>
-                                    <div className={`rounded-2xl px-4 py-3 ${msg.role === 'user'
-                                        ? 'bg-gradient-to-r from-emerald-500 to-teal-600 text-white'
-                                        : msg.error
-                                            ? 'bg-red-50 text-red-700 border border-red-200'
-                                            : 'bg-gray-100 text-gray-800'
-                                        }`}>
-                                        <p className="whitespace-pre-wrap">{msg.content}</p>
-                                    </div>
-                                    {msg.role === 'assistant' && !msg.error && msg.metadata && (
-                                        <div className="mt-2 flex flex-wrap gap-2 px-1">
-                                            <span className="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs">
-                                                <Info className="w-3 h-3" />
-                                                {msg.metadata.provider}/{msg.metadata.model}
-                                            </span>
-                                            {msg.metadata.knowledgeUsed && (
-                                                <span className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">
-                                                    <BookOpen className="w-3 h-3" />
-                                                    Knowledge Used
-                                                </span>
-                                            )}
-                                            {msg.metadata.escalate && (
-                                                <span className="inline-flex items-center gap-1 px-2 py-1 bg-red-100 text-red-700 rounded text-xs">
-                                                    <AlertTriangle className="w-3 h-3" />
-                                                    Escalation Triggered
-                                                </span>
-                                            )}
-                                        </div>
-                                    )}
-                                    {msg.detectedAttributes && Object.keys(msg.detectedAttributes).length > 0 && (
-                                        <div className="mt-2 flex flex-wrap gap-1 px-1">
-                                            {Object.entries(msg.detectedAttributes).map(([k, v]) => (
-                                                <span key={k} className="px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs">
-                                                    {k}: {v}
-                                                </span>
-                                            ))}
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        ))}
-                        {loading && (
-                            <div className="flex justify-start">
-                                <div className="bg-gray-100 rounded-2xl px-4 py-3 flex items-center gap-2">
-                                    <Loader2 className="w-4 h-4 animate-spin text-gray-500" />
-                                    <span className="text-sm text-gray-500">Thinking...</span>
-                                </div>
-                            </div>
-                        )}
-                        <div ref={messagesEndRef} />
-                    </div>
-
-                    {/* Input */}
-                    <div className="p-4 border-t border-gray-100">
-                        <div className="flex gap-3">
-                            <input
-                                type="text"
-                                value={input}
-                                onChange={(e) => setInput(e.target.value)}
-                                onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage()}
-                                placeholder="Type a test message..."
-                                className="flex-1 px-4 py-3 bg-gray-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-all"
-                                disabled={loading}
-                            />
-                            <button
-                                onClick={sendMessage}
-                                disabled={loading || !input.trim()}
-                                className="px-5 py-3 bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-xl hover:from-emerald-600 hover:to-teal-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-                            >
-                                <Send className="w-5 h-5" />
-                            </button>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Sidebar - Status */}
-                <div className="w-80 bg-white rounded-2xl shadow-sm p-4 overflow-y-auto">
-                    <h3 className="text-sm font-semibold text-gray-900 mb-4">Agent Status</h3>
-
-                    <div className="space-y-4">
-                        <div className="p-3 bg-gray-50 rounded-xl">
-                            <p className="text-xs text-gray-500 mb-1">Agent Name</p>
-                            <p className="font-medium text-gray-900">{agent?.name || 'AI Assistant'}</p>
-                        </div>
-
-                        <div className="p-3 bg-gray-50 rounded-xl">
-                            <p className="text-xs text-gray-500 mb-1">LLM Provider</p>
-                            <p className="font-medium text-gray-900">{agent?.llmProvider || 'openai'} / {agent?.llmModel || 'gpt-4o-mini'}</p>
-                        </div>
-
-                        <div className="p-3 bg-gray-50 rounded-xl">
-                            <p className="text-xs text-gray-500 mb-1">Temperature</p>
-                            <p className="font-medium text-gray-900">{agent?.temperature || 0.7}</p>
-                        </div>
-
-                        <hr className="border-gray-100" />
-
-                        <div className="grid grid-cols-2 gap-3">
-                            <div className="p-3 bg-indigo-50 rounded-xl text-center">
-                                <p className="text-2xl font-bold text-indigo-600">{status?.stats?.knowledgeSources || 0}</p>
-                                <p className="text-xs text-indigo-600">Sources</p>
-                            </div>
-                            <div className="p-3 bg-purple-50 rounded-xl text-center">
-                                <p className="text-2xl font-bold text-purple-600">{status?.stats?.knowledgeChunks || 0}</p>
-                                <p className="text-xs text-purple-600">Chunks</p>
-                            </div>
-                            <div className="p-3 bg-amber-50 rounded-xl text-center">
-                                <p className="text-2xl font-bold text-amber-600">{status?.stats?.guidances || 0}</p>
-                                <p className="text-xs text-amber-600">Guidance</p>
-                            </div>
-                            <div className="p-3 bg-red-50 rounded-xl text-center">
-                                <p className="text-2xl font-bold text-red-600">{status?.stats?.guardrails || 0}</p>
-                                <p className="text-xs text-red-600">Guardrails</p>
-                            </div>
-                        </div>
-
-                        <hr className="border-gray-100" />
-
-                        <div>
-                            <p className="text-xs text-gray-500 mb-2">Vector Index</p>
-                            <div className={`flex items-center gap-2 text-sm ${status?.vectorIndex === 'ready' ? 'text-green-600' : 'text-yellow-600'
-                                }`}>
-                                {status?.vectorIndex === 'ready' ? (
-                                    <CheckCircle className="w-4 h-4" />
-                                ) : (
-                                    <AlertTriangle className="w-4 h-4" />
-                                )}
-                                {status?.vectorIndex === 'ready' ? 'Ready' : 'Not configured'}
-                            </div>
-                        </div>
-
-                        <hr className="border-gray-100" />
-
-                        {/* Phone Dialer Section */}
-                        <div className="space-y-3">
-                            <div className="flex items-center gap-2">
-                                <Phone className="w-4 h-4 text-emerald-600" />
-                                <h4 className="text-sm font-semibold text-gray-900">Test Outbound Call</h4>
-                            </div>
-
-                            <input
-                                type="tel"
-                                value={phoneNumber}
-                                onChange={(e) => setPhoneNumber(e.target.value)}
-                                placeholder="+1234567890"
-                                className="w-full px-3 py-2 bg-gray-100 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white"
-                                disabled={callStatus !== 'idle'}
-                            />
-
-                            <select
-                                value={callMethod}
-                                onChange={(e) => setCallMethod(e.target.value as any)}
-                                className="w-full px-3 py-2 bg-gray-100 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                                disabled={callStatus !== 'idle'}
-                            >
-                                <option value="realtime">OpenAI Realtime (Fastest)</option>
-                                <option value="legacy">Legacy (Azure STT/TTS)</option>
-                                <option value="convrelay">Conversational Relay</option>
-                            </select>
-
-                            {callStatus === 'active' && (
-                                <div className="flex items-center justify-center gap-2 py-2 bg-green-50 rounded-lg">
-                                    <PhoneCall className="w-4 h-4 text-green-600 animate-pulse" />
-                                    <span className="text-sm font-medium text-green-700">
-                                        {formatDuration(callDuration)}
-                                    </span>
-                                </div>
-                            )}
-
-                            {callStatus === 'idle' ? (
-                                <button
-                                    onClick={initiateCall}
-                                    className="w-full py-2.5 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-lg text-sm font-medium hover:from-green-600 hover:to-emerald-700 transition-all flex items-center justify-center gap-2"
-                                >
-                                    <Phone className="w-4 h-4" />
-                                    Call Now
-                                </button>
-                            ) : callStatus === 'calling' ? (
-                                <button
-                                    disabled
-                                    className="w-full py-2.5 bg-yellow-500 text-white rounded-lg text-sm font-medium flex items-center justify-center gap-2"
-                                >
-                                    <Loader2 className="w-4 h-4 animate-spin" />
-                                    Connecting...
-                                </button>
-                            ) : callStatus === 'active' ? (
-                                <button
-                                    onClick={endCall}
-                                    className="w-full py-2.5 bg-gradient-to-r from-red-500 to-rose-600 text-white rounded-lg text-sm font-medium hover:from-red-600 hover:to-rose-700 transition-all flex items-center justify-center gap-2"
-                                >
-                                    <PhoneOff className="w-4 h-4" />
-                                    End Call
-                                </button>
-                            ) : (
-                                <div className="text-center py-2 text-sm text-gray-500">
-                                    Call ended
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                </div>
             </div>
         </div>
     );
